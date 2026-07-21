@@ -1,0 +1,25 @@
+============================================================
+PM2.5 24H AHEAD FORECASTING — THESIS RESULTS
+============================================================
+Target: 24h-ahead forecast of NEXT-DAY AVERAGE PM2.5 (mean over t+1..t+24)
+Dataset    : Dhaka, Bangladesh 2016-03 to 2022-06
+Rows       : 51,621  (after cleaning)
+Features   : 50
+Split      : 70% train / 15% val / 15% test (block-interleaved, 2-week blocks)
+
+BEST MODEL : LightGBM_Test
+  MAE      : 15.8211 µg/m³
+  RMSE     : 23.2368 µg/m³
+  R²       : 0.8793
+  MAPE     : 22.07%
+  SMAPE    : 20.45%
+  Expl.Var : 0.8806
+
+ALL TEST RESULTS:
+  LightGBM_Test                       MAE=15.821  RMSE=23.237  R²=0.8793  SMAPE=20.45%
+  SimpleAvg_Test                      MAE=15.910  RMSE=23.432  R²=0.8772  SMAPE=20.48%
+  Ensemble_Test                       MAE=16.183  RMSE=23.861  R²=0.8727  SMAPE=20.74%
+  XGBoost_Test                        MAE=16.183  RMSE=23.861  R²=0.8727  SMAPE=20.74%
+  CNN-BiLSTM-Attn_Test                MAE=19.221  RMSE=26.578  R²=0.8421  SMAPE=26.56%
+  CatBoost_Test                       MAE=20.447  RMSE=33.608  R²=0.7475  SMAPE=23.24%
+============================================================
