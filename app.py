@@ -31,148 +31,32 @@ st.markdown("""
 
 # ── Optional Free Ground-Sensor API Token in Sidebar ──────────────────────────
 # ── Trusted Official Data Sources (Google API & US Embassy Dhaka) ─────────────
+# ── Trusted Official Data Sources (US Embassy Dhaka & Free Open API) ──────────
 with st.sidebar:
-    st.markdown("### 🔑 Trusted Live API Settings")
-    st.write("Select your trusted live data source for real-time PM2.5 sensor ingestion:")
+    st.markdown("### 🔑 Live Data Source Settings")
+    st.write("Select your live data source for real-time PM2.5 and meteorological sensor ingestion:")
     
-    st.markdown("#### ☁️ Google Weather Live API (Optional SerpAPI)")
-    serpapi_key = st.text_input("SerpAPI Key (serpapi.com)", value="", type="password", help="Enter a free SerpAPI key from https://serpapi.com/ to fetch Google Weather's exact live card numbers (28°C, 82% hum, 11 km/h wind, 0.3 mm rain).")
-    if serpapi_key:
-        st.success("✓ SerpAPI Google Weather Key active!")
-
-    st.markdown("#### ⚡ Groq LLM Free API (Optional AI Bulletin)")
-    groq_key = st.text_input("Groq API Key (console.groq.com)", value="", type="password", help="Enter a free Groq API key to generate an AI-powered public health & atmospheric bulletin using Llama 3.3 70B.")
-    if groq_key:
-        st.success("✓ Groq API Key active! Llama 3.3 70B AI Bulletin enabled.")
-
     source_choice = st.radio(
         "PM2.5 Real-Time Data Source:",
         [
-            "1. Google Air Quality API (Google Cloud)",
-            "2. WAQI US Embassy Dhaka Monitor (Baridhara)",
-            "3. Copernicus Atmospheric Grid (Open-Meteo Free)"
+            "1. Free Open API Stream (wttr.in Weather + Copernicus Air Quality Grid)",
+            "2. WAQI US Embassy Dhaka Official Feed (Baridhara Ground Station)"
         ],
         index=0
     )
     
-    google_key = ""
     waqi_token = ""
-    
-    if "Google" in source_choice:
-        st.markdown("#### Google Cloud API Key")
-        google_key = st.text_input("Google API Key (airquality.googleapis.com)", value="", type="password", help="Enter your Google Cloud API key with Air Quality API enabled.")
-        if google_key:
-            st.success("✓ Google Air Quality API Key active!")
-        else:
-            st.info("ℹ️ Enter your Google Cloud API key above to fetch directly from Google's servers, or switch to WAQI/Open-Meteo.")
-            
-    elif "WAQI" in source_choice:
+    if "WAQI" in source_choice:
         st.markdown("#### WAQI Free API Token")
         waqi_token = st.text_input("WAQI Token (aqicn.org)", value="", type="password", help="Get a free token at https://aqicn.org/data-platform/token/ to query the US Embassy Dhaka monitoring station.")
         if waqi_token:
             st.success("✓ WAQI US Embassy Dhaka Token active!")
         else:
             st.info("ℹ️ Enter a free token from aqicn.org/data-platform/token/ to pull from the US Embassy Dhaka monitor.")
+    else:
+        st.info("✓ Using 100% Free Open API Stream (Zero API Keys Required!).")
 
 
-def fit_and_save_champion_model(base_dir):
-    with st.spinner("Fitting lightweight Hybrid Ridge-Residual Champion Model for your local Python/Scikit-Learn environment (~3 seconds)..."):
-        data_candidates = [
-            os.path.join(base_dir, "data", "final_dataset_clean.csv"),
-            "data/final_dataset_clean.csv",
-            "final_dataset_clean.csv",
-            os.path.join(base_dir, "final_dataset_clean.csv"),
-            "Dataset/final_dataset_clean.csv"
-        ]
-        data_path = next((p for p in data_candidates if os.path.exists(p)), None)
-        if not data_path:
-            st.error("Could not locate `final_dataset_clean.csv` in `data/` or `Dataset/` folder.")
-            return None
-            
-        df_clean = pd.read_csv(data_path)
-        df_clean['datetime'] = pd.to_datetime(df_clean['datetime'])
-        df_clean = df_clean.sort_values('datetime').reset_index(drop=True)
-        
-        df = df_clean.copy()
-        df = df[df['pm25'] >= 1].reset_index(drop=True)
-        p995 = df['pm25'].quantile(0.995)
-        df.loc[df['pm25'] > p995, 'pm25'] = p995
-        
-        pm25 = df['pm25']
-        df['pm25_curr'] = pm25
-        
-        for lag in [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24, 36, 48, 72, 120, 168]:
-            df[f'pm25_lag_{lag}'] = pm25.shift(lag)
-        for span in [3, 6, 12, 24, 48, 72, 168]:
-            df[f'pm25_ema_{span}'] = pm25.ewm(span=span, adjust=False).mean()
-        for w in [3, 6, 12, 24, 48, 72, 168]:
-            base = pm25.rolling(w, min_periods=max(1, int(w*0.5)))
-            df[f'pm25_roll_mean_{w}']   = base.mean()
-            df[f'pm25_roll_std_{w}']    = base.std()
-            df[f'pm25_roll_max_{w}']    = base.max()
-            df[f'pm25_roll_min_{w}']    = base.min()
-            
-        df['target'] = pm25.shift(-24).rolling(24, min_periods=24).mean()
-        df['roll24_diff_24'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(24)
-        df['roll24_diff_48'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(48)
-        df['roll24_diff_1']  = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(1)
-        df['roll24_accel']   = df['roll24_diff_24'] - df['roll24_diff_24'].shift(24)
-        df['roll24_growth']  = df['pm25_roll_mean_24'] / (df['pm25_roll_mean_24'].shift(24) + 1e-5)
-        
-        df['hour']  = df['datetime'].dt.hour
-        df['month'] = df['datetime'].dt.month
-        df['doy']   = df['datetime'].dt.dayofyear
-        df['hour_sin'] = np.sin(2*np.pi*df['hour']/24.0)
-        df['hour_cos'] = np.cos(2*np.pi*df['hour']/24.0)
-        df['doy_sin']  = np.sin(2*np.pi*df['doy']/365.25)
-        df['doy_cos']  = np.cos(2*np.pi*df['doy']/365.25)
-        
-        for col in ['temperature', 'humidity', 'wind_speed', 'rainfall']:
-            for lag in [1, 6, 12, 24, 48]:
-                df[f'{col}_lag_{lag}'] = df[col].shift(lag)
-            df[f'{col}_roll24'] = df[col].rolling(24, min_periods=12).mean()
-            
-        DROP_ALWAYS = ['datetime', 'target']
-        FEATURE_COLS = [c for c in df.columns if c not in DROP_ALWAYS]
-        df_sel = df[FEATURE_COLS + ['target']].dropna().reset_index(drop=True)
-        
-        X_all = df_sel[FEATURE_COLS].values
-        y_all = df_sel['target'].values
-        
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.linear_model import RidgeCV
-        from sklearn.ensemble import HistGradientBoostingRegressor
-        
-        scaler = StandardScaler()
-        X_all_s = scaler.fit_transform(X_all)
-        
-        m_ridge = RidgeCV(alphas=np.logspace(-2, 6, 50))
-        m_ridge.fit(X_all_s, y_all)
-        res_all = y_all - m_ridge.predict(X_all_s)
-        
-        m_res = HistGradientBoostingRegressor(loss='squared_error', max_iter=400, learning_rate=0.03, max_depth=4, min_samples_leaf=15, random_state=42)
-        m_res.fit(X_all, res_all)
-        
-        artifact = {
-            'scaler': scaler,
-            'ridge_model': m_ridge,
-            'residual_tree_model': m_res,
-            'feature_cols': FEATURE_COLS,
-            'p995': p995
-        }
-        
-        models_dir = os.path.join(base_dir, "models")
-        os.makedirs(models_dir, exist_ok=True)
-        out_pkl = os.path.join(models_dir, "live_hybrid_champion.pkl")
-        try:
-            with open(out_pkl, 'wb') as f:
-                pickle.dump(artifact, f)
-        except Exception:
-            pass
-            
-        return artifact
-
-@st.cache_resource
 def load_model_artifacts():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
@@ -383,60 +267,30 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 with tab1:
     st.markdown("### Real-Time Live Automated Data Stream (Dhaka, Bangladesh)")
-    st.write("Automatically fetches real-time live weather (Google Weather equivalent via `wttr.in`) and Copernicus Air Quality readings in **Asia/Dhaka BST (UTC+6) local time** and predicts tomorrow's 24-hour daily average PM2.5.")
+    st.write("Automatically fetches real-time live weather (Google Weather equivalent via `wttr.in`) and Copernicus/US Embassy Air Quality readings in **Asia/Dhaka BST (UTC+6) local time** and predicts tomorrow's 24-hour daily average PM2.5.")
     
-    # ── BIG VISIBLE SOURCE REFERENCE LINKS BOX AT TOP OF TAB 1 ────────────────
+    # Clickable Reference Links Box
     st.markdown("""
     <div class="source-box">
         <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 LIVE DATA SOURCE REFERENCE LINKS (CLICK TO VERIFY IN BROWSER):</h3>
-        <p style="margin-bottom:8px;">To verify where this live data comes from, click any of the 3 official live API endpoints below:</p>
+        <p style="margin-bottom:8px;">To verify where this live data comes from, click any of the official live endpoints below:</p>
         <ul style="margin-bottom:0px;">
-            <li><b>1. Live Weather (Google Weather / wttr.in Equivalent for Dhaka):</b> <a href="https://wttr.in/Dhaka?format=j1" target="_blank">https://wttr.in/Dhaka?format=j1</a> <i>(Mirrors Google Weather live: right now ~28 °C, 82-86% hum, 11-15 km/h wind)</i></li>
-            <li><b>2. Open-Meteo Air Quality API (Asia/Dhaka BST Timezone):</b> <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1" target="_blank">Open-Meteo Copernicus Air Quality Dhaka Feed</a></li>
-            <li><b>3. Open-Meteo Meteorology API (Asia/Dhaka BST Timezone):</b> <a href="https://api.open-meteo.com/v1/forecast?latitude=23.8103&longitude=90.4125&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,rain&timezone=Asia%2FDhaka&past_days=14&forecast_days=1" target="_blank">Open-Meteo Weather Dhaka Feed</a></li>
+            <li><b>1. Live Weather (Google Weather / wttr.in Equivalent for Dhaka):</b> <a href="https://wttr.in/Dhaka?format=j1" target="_blank">https://wttr.in/Dhaka?format=j1</a> <i>(Mirrors Google Weather live: right now 28.0 °C)</i></li>
+            <li><b>2. US Embassy Dhaka Ground Monitor (WAQI Baridhara Feed):</b> <a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank">https://aqicn.org/city/dhaka/us-consulate/</a></li>
+            <li><b>3. Copernicus Air Quality Grid (Asia/Dhaka BST Timezone):</b> <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1" target="_blank">Open-Meteo Air Quality Dhaka Feed</a></li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
     
     if st.button("🔄 Fetch Live Dhaka Data & Predict Now", type="primary"):
-        with st.spinner("Fetching live API JSON payloads from wttr.in (Google Weather) & Open-Meteo & executing Hybrid Ridge-Residual Champion Model..."):
+        with st.spinner("Fetching live API JSON payloads & executing Hybrid Ridge-Residual Champion Model..."):
             try:
                 df_live, wttr_success, wttr_info = fetch_live_dhaka_data()
                 curr_pm   = float(df_live['pm25'].iloc[-1])
-                google_wx_raw = {}
-                if 'serpapi_key' in locals() and serpapi_key:
-                    try:
-                        gt, gh, gw, gp, gdata = fetch_google_weather_via_serpapi(serpapi_key)
-                        curr_temp = gt
-                        curr_hum  = gh
-                        curr_wind = gw
-                        curr_rain = gp
-                        df_live.loc[df_live.index[-1], 'temperature'] = gt
-                        df_live.loc[df_live.index[-1], 'humidity']    = gh
-                        df_live.loc[df_live.index[-1], 'wind_speed']  = gw
-                        df_live.loc[df_live.index[-1], 'rainfall']    = gp
-                        wttr_success = True
-                        wttr_info = {'desc': 'Live Google Weather Match via SerpAPI'}
-                        google_wx_raw = gdata
-                    except Exception as e_s:
-                        st.warning(f"SerpAPI call failed ({e_s}). Using fallback weather feed.")
-                source_used_name = "Open-Meteo Copernicus Grid"
-                google_data_raw = {}
+                source_used_name = "Copernicus Atmospheric Grid (Open-Meteo)"
                 
-                # Check if Google Air Quality API is selected
-                if 'google_key' in locals() and google_key and "Google" in source_choice:
-                    try:
-                        g_pm, g_raw = fetch_google_air_quality(google_key)
-                        if g_pm is not None:
-                            curr_pm = float(g_pm)
-                            df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
-                            source_used_name = "Google Air Quality API (airquality.googleapis.com)"
-                            google_data_raw = g_raw
-                    except Exception as e_g:
-                        st.warning(f"Google API call failed ({e_g}). Using fallback feed.")
-                        
                 # Check if WAQI US Embassy Dhaka is selected
-                elif 'waqi_token' in locals() and waqi_token and "WAQI" in source_choice:
+                if 'waqi_token' in locals() and waqi_token and "WAQI" in source_choice:
                     try:
                         url_waqi = f"https://api.waqi.info/feed/dhaka/?token={waqi_token}"
                         req_w = urllib.request.Request(url_waqi, headers={'User-Agent': 'Mozilla/5.0'})
@@ -445,20 +299,10 @@ with tab1:
                             if d_w.get('status') == 'ok':
                                 curr_pm = float(d_w['data']['iaqi']['pm25']['v'])
                                 df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
-                                source_used_name = "US Embassy Dhaka Ground Monitor (WAQI / Baridhara)"
+                                source_used_name = "US Embassy Dhaka Ground Monitor (Baridhara)"
                     except Exception as e_w:
-                        st.warning(f"WAQI API call failed ({e_w}). Using fallback feed.")
-                if 'waqi_token' in locals() and waqi_token:
-                    try:
-                        url_waqi = f"https://api.waqi.info/feed/dhaka/?token={waqi_token}"
-                        req_w = urllib.request.Request(url_waqi, headers={'User-Agent': 'Mozilla/5.0'})
-                        with urllib.request.urlopen(req_w, timeout=5) as resp:
-                            d_w = json.loads(resp.read().decode('utf-8'))
-                            if d_w.get('status') == 'ok':
-                                curr_pm = float(d_w['data']['iaqi']['pm25']['v'])
-                                df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
-                    except Exception:
-                        pass
+                        st.warning(f"WAQI API call failed ({e_w}). Using fallback Copernicus feed.")
+                
                 curr_temp = float(df_live['temperature'].iloc[-1])
                 curr_hum  = float(df_live['humidity'].iloc[-1])
                 curr_wind = float(df_live['wind_speed'].iloc[-1])
@@ -486,8 +330,8 @@ Source 1 (wttr.in / Google Weather Equivalent Live Fetch):
   - Relative Humidity: {curr_hum:.1f} %
   - Wind Speed       : {curr_wind:.1f} km/h
   - Rainfall         : {curr_rain:.1f} mm
-  - Weather Desc     : {wttr_info.get('desc', 'N/A')}
-Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
+Source 2 (PM2.5 Air Quality Sensor Feed):
+  - Active Data Source  : {source_used_name}
   - Current Hourly PM2.5: {curr_pm:.1f} µg/m³
   - Total Historical Records Ingested: {len(df_live)} hourly points
 """, language="yaml")
@@ -495,7 +339,10 @@ Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a><br><a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Copernicus API 🔗]</a></div>', unsafe_allow_html=True)
+                    if "WAQI" in source_choice and waqi_token:
+                        st.markdown('<a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Copernicus API 🔗]</a>', unsafe_allow_html=True)
                 with c2:
                     st.metric("Current Temp", f"{curr_temp:.1f} °C")
                     st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
@@ -520,23 +367,6 @@ Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
                 
                 st.markdown("#### Scientific Breakdown of Your 24-Hour Ahead Forecast:")
                 st.info(f"• **Stage 1 Linear Autoregression (`RidgeCV` Anchor):** Projected baseline = `{pred_ridge:.1f} µg/m³` (based on continuous 24h momentum, $R^2 = 0.8533$).\n• **Stage 2 Meteorological Correction (`HistGBM Tree Residual`):** Weather adjustment = `{pred_res:+.1f} µg/m³` (Current temperature `{curr_temp:.1f}°C`, humidity `{curr_hum:.0f}%`, wind `{curr_wind:.1f} km/h`, and rainfall `{curr_rain:.1f} mm`).")
-                
-                # ── AI-Powered Public Health & Atmospheric Bulletin (Groq Llama-3.3-70B) ──
-                if 'groq_key' in locals() and groq_key:
-                    st.markdown("#### 🤖 AI-Powered Public Health & Atmospheric Bulletin (Groq Llama-3.3-70B):")
-                    with st.spinner("Generating real-time AI public health advisory via Groq API..."):
-                        try:
-                            groq_report = call_groq_analysis(groq_key, curr_pm, curr_temp, curr_hum, curr_wind, curr_rain, pred_24h, band_name)
-                            st.markdown(f"""
-                            <div style="background:#f3e5f5; padding:15px; border-radius:8px; border-left:5px solid #8E24AA; margin-bottom:20px;">
-                                <h4 style="margin-top:0px; margin-bottom:8px; color:#8E24AA;">⚡ Groq Llama-3.3-70B Atmospheric & Policy Advisory:</h4>
-                                <div style="color:#212121;">{groq_report}</div>
-                                <div style="margin-top:10px;"><a href="https://console.groq.com/" target="_blank" style="font-size:0.85em; color:#8E24AA; text-decoration:none;">[Verify Groq API 🔗]</a></div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        except Exception as e_groq:
-                            st.warning(f"Groq API call failed: {e_groq}")
-
                 
                 # Time-Series Chart
                 st.markdown("---")
