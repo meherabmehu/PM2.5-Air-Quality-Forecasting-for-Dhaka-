@@ -35,6 +35,11 @@ with st.sidebar:
     st.markdown("### 🔑 Trusted Live API Settings")
     st.write("Select your trusted live data source for real-time PM2.5 sensor ingestion:")
     
+    st.markdown("#### ⚡ Groq LLM Free API (Optional AI Bulletin)")
+    groq_key = st.text_input("Groq API Key (console.groq.com)", value="", type="password", help="Enter a free Groq API key to generate an AI-powered public health & atmospheric bulletin using Llama 3.3 70B.")
+    if groq_key:
+        st.success("✓ Groq API Key active! Llama 3.3 70B AI Bulletin enabled.")
+
     source_choice = st.radio(
         "PM2.5 Real-Time Data Source:",
         [
@@ -195,6 +200,36 @@ def get_aqi_band_info(pm25_val):
         return "Unhealthy (151–200)", "aqi-unhealthy", "Everyone may begin to experience health effects; members of sensitive groups may experience more serious effects."
     else:
         return "Very Unhealthy / Hazardous (200+)", "aqi-hazardous", "Health warnings of emergency conditions. The entire population is more likely to be affected."
+
+def call_groq_analysis(groq_key, curr_pm, curr_temp, curr_hum, curr_wind, curr_rain, pred_24h, band_name):
+    """Calls Groq API (llama-3.3-70b-versatile) to generate an AI-Powered Public Health & Atmospheric Bulletin for Dhaka."""
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json"
+    }
+    prompt = (
+        f"You are an atmospheric scientist and public health policy advisor in Dhaka, Bangladesh.\n"
+        f"Current live Dhaka readings:\n"
+        f" - PM2.5: {curr_pm:.1f} µg/m³ (US Embassy Dhaka Monitor)\n"
+        f" - Temperature: {curr_temp:.1f} °C\n"
+        f" - Humidity: {curr_hum:.0f} %\n"
+        f" - Wind Speed: {curr_wind:.1f} km/h\n"
+        f" - Rainfall: {curr_rain:.1f} mm\n"
+        f"Our Hybrid Ridge-Residual Boosting model has forecasted the 24-hour ahead daily average PM2.5 concentration to be: {pred_24h:.1f} µg/m³ (AQI Severity Band: {band_name}).\n"
+        f"Provide a concise, 3-bullet academic and public health analysis of this forecast for Dhaka citizens and environmental policymakers."
+    )
+    payload = json.dumps({
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 300
+    }).encode('utf-8')
+    
+    req = urllib.request.Request(url, data=payload, headers=headers)
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+        return data["choices"][0]["message"]["content"]
 
 def fetch_google_air_quality(api_key, lat=23.8103, lon=90.4125):
     """Fetches official real-time PM2.5 for Dhaka directly from Google Air Quality API (Google Maps Platform / Google Cloud)."""
@@ -452,6 +487,23 @@ Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
                 
                 st.markdown("#### Scientific Breakdown of Your 24-Hour Ahead Forecast:")
                 st.info(f"• **Stage 1 Linear Autoregression (`RidgeCV` Anchor):** Projected baseline = `{pred_ridge:.1f} µg/m³` (based on continuous 24h momentum, $R^2 = 0.8533$).\n• **Stage 2 Meteorological Correction (`HistGBM Tree Residual`):** Weather adjustment = `{pred_res:+.1f} µg/m³` (Current temperature `{curr_temp:.1f}°C`, humidity `{curr_hum:.0f}%`, wind `{curr_wind:.1f} km/h`, and rainfall `{curr_rain:.1f} mm`).")
+                
+                # ── AI-Powered Public Health & Atmospheric Bulletin (Groq Llama-3.3-70B) ──
+                if 'groq_key' in locals() and groq_key:
+                    st.markdown("#### 🤖 AI-Powered Public Health & Atmospheric Bulletin (Groq Llama-3.3-70B):")
+                    with st.spinner("Generating real-time AI public health advisory via Groq API..."):
+                        try:
+                            groq_report = call_groq_analysis(groq_key, curr_pm, curr_temp, curr_hum, curr_wind, curr_rain, pred_24h, band_name)
+                            st.markdown(f"""
+                            <div style="background:#f3e5f5; padding:15px; border-radius:8px; border-left:5px solid #8E24AA; margin-bottom:20px;">
+                                <h4 style="margin-top:0px; margin-bottom:8px; color:#8E24AA;">⚡ Groq Llama-3.3-70B Atmospheric & Policy Advisory:</h4>
+                                <div style="color:#212121;">{groq_report}</div>
+                                <div style="margin-top:10px;"><a href="https://console.groq.com/" target="_blank" style="font-size:0.85em; color:#8E24AA; text-decoration:none;">[Verify Groq API 🔗]</a></div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        except Exception as e_groq:
+                            st.warning(f"Groq API call failed: {e_groq}")
+
                 
                 # Time-Series Chart
                 st.markdown("---")
