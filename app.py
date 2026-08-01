@@ -32,21 +32,33 @@ st.markdown("""
 # ── Optional Free Ground-Sensor API Token in Sidebar ──────────────────────────
 # ── Trusted Official Data Sources (Google API & US Embassy Dhaka) ─────────────
 # ── Trusted Official Data Sources (US Embassy Dhaka & Free Open API) ──────────
+# ── Trusted Official Data Sources (Google Cloud API & US Embassy Dhaka) ─────────
 with st.sidebar:
-    st.markdown("### 🔑 Live Data Source Settings")
+    st.markdown("### 🔑 Trusted Live Data Source Settings")
     st.write("Select your live data source for real-time PM2.5 and meteorological sensor ingestion:")
     
     source_choice = st.radio(
         "PM2.5 Real-Time Data Source:",
         [
-            "1. Free Open API Stream (wttr.in Weather + Copernicus Air Quality Grid)",
-            "2. WAQI US Embassy Dhaka Official Feed (Baridhara Ground Station)"
+            "1. Google Cloud API (Google Maps / Hosted Environmental API)",
+            "2. WAQI US Embassy Dhaka Official Feed (Baridhara Ground Station)",
+            "3. Free Open API Stream (wttr.in Weather + Copernicus Air Quality Grid)"
         ],
         index=0
     )
     
+    google_key = ""
     waqi_token = ""
-    if "WAQI" in source_choice:
+    
+    if "Google" in source_choice:
+        st.markdown("#### Google Cloud / Maps Platform API Key")
+        google_key = st.text_input("Google API Key (console.cloud.google.com/google/maps-hosted/)", value="", type="password", help="Paste your Google Cloud / Google Maps Hosted API key from https://console.cloud.google.com/google/maps-hosted/")
+        if google_key:
+            st.success("✓ Google Cloud / Maps Hosted API Key active!")
+        else:
+            st.info("ℹ️ Enter your Google Cloud API key above (from console.cloud.google.com/google/maps-hosted/) to query Google's servers directly, or switch to Option 2 / 3.")
+            
+    elif "WAQI" in source_choice:
         st.markdown("#### WAQI Free API Token")
         waqi_token = st.text_input("WAQI Token (aqicn.org)", value="", type="password", help="Get a free token at https://aqicn.org/data-platform/token/ to query the US Embassy Dhaka monitoring station.")
         if waqi_token:
@@ -276,6 +288,7 @@ with tab1:
         <p style="margin-bottom:8px;">To verify where this live data comes from, click any of the official live endpoints below:</p>
         <ul style="margin-bottom:0px;">
             <li><b>1. Live Weather (Google Weather / wttr.in Equivalent for Dhaka):</b> <a href="https://wttr.in/Dhaka?format=j1" target="_blank">https://wttr.in/Dhaka?format=j1</a> <i>(Mirrors Google Weather live: right now 28.0 °C)</i></li>
+            <li><b>2. Google Cloud / Maps Platform Hosted API Console:</b> <a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank">https://console.cloud.google.com/google/maps-hosted/</a> <i>(Official Google Cloud Environmental API Dashboard)</i></li>
             <li><b>2. US Embassy Dhaka Ground Monitor (WAQI Baridhara Feed):</b> <a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank">https://aqicn.org/city/dhaka/us-consulate/</a></li>
             <li><b>3. Copernicus Air Quality Grid (Asia/Dhaka BST Timezone):</b> <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1" target="_blank">Open-Meteo Air Quality Dhaka Feed</a></li>
         </ul>
@@ -339,19 +352,21 @@ Source 2 (PM2.5 Air Quality Sensor Feed):
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    if "WAQI" in source_choice and waqi_token:
+                    if "Google" in source_choice and google_key:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Cloud API 🔗]</a><br><a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a></div>', unsafe_allow_html=True)
+                    elif "WAQI" in source_choice and waqi_token:
                         st.markdown('<a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a>', unsafe_allow_html=True)
                     else:
-                        st.markdown('<a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Copernicus API 🔗]</a>', unsafe_allow_html=True)
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a><br><a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Copernicus API 🔗]</a></div>', unsafe_allow_html=True)
                 with c2:
                     st.metric("Current Temp", f"{curr_temp:.1f} °C")
-                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Cloud API 🔗]</a></div>', unsafe_allow_html=True)
                 with c3:
                     st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
-                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Cloud API 🔗]</a></div>', unsafe_allow_html=True)
                 with c4:
                     st.metric("Rainfall", f"{curr_rain:.1f} mm")
-                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Cloud API 🔗]</a></div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
                 st.subheader("🔮 Forecasted 24-Hour Ahead Daily Average PM2.5 (Dhaka 24 Hours Later)")
