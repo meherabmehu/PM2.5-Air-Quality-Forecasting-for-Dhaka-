@@ -30,15 +30,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Optional Free Ground-Sensor API Token in Sidebar ──────────────────────────
+# ── Trusted Official Data Sources (Google API & US Embassy Dhaka) ─────────────
 with st.sidebar:
-    st.markdown("### 🔑 Live Ground Sensor API (Optional)")
-    st.write("By default, the app uses free open APIs (Open-Meteo + wttr.in). To pull instantaneous ground-sensor PM2.5 directly from the **US Embassy Dhaka monitor**, enter a free WAQI token below (`aqicn.org`):")
-    waqi_token = st.text_input("WAQI Free Token (aqicn.org)", value="", type="password", help="Get a free demo or personal token at https://aqicn.org/data-platform/token/")
-    if waqi_token:
-        st.success("✓ WAQI token active! Using US Embassy Dhaka ground monitor.")
+    st.markdown("### 🔑 Trusted Live API Settings")
+    st.write("Select your trusted live data source for real-time PM2.5 sensor ingestion:")
+    
+    source_choice = st.radio(
+        "PM2.5 Real-Time Data Source:",
+        [
+            "1. Google Air Quality API (Google Cloud)",
+            "2. WAQI US Embassy Dhaka Monitor (Baridhara)",
+            "3. Copernicus Atmospheric Grid (Open-Meteo Free)"
+        ],
+        index=0
+    )
+    
+    google_key = ""
+    waqi_token = ""
+    
+    if "Google" in source_choice:
+        st.markdown("#### Google Cloud API Key")
+        google_key = st.text_input("Google API Key (airquality.googleapis.com)", value="", type="password", help="Enter your Google Cloud API key with Air Quality API enabled.")
+        if google_key:
+            st.success("✓ Google Air Quality API Key active!")
+        else:
+            st.info("ℹ️ Enter your Google Cloud API key above to fetch directly from Google's servers, or switch to WAQI/Open-Meteo.")
+            
+    elif "WAQI" in source_choice:
+        st.markdown("#### WAQI Free API Token")
+        waqi_token = st.text_input("WAQI Token (aqicn.org)", value="", type="password", help="Get a free token at https://aqicn.org/data-platform/token/ to query the US Embassy Dhaka monitoring station.")
+        if waqi_token:
+            st.success("✓ WAQI US Embassy Dhaka Token active!")
+        else:
+            st.info("ℹ️ Enter a free token from aqicn.org/data-platform/token/ to pull from the US Embassy Dhaka monitor.")
 
-st.markdown('<div class="main-header">🌍 Dhaka PM2.5 Real-Time 24h-Ahead Forecaster</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Research-Grade Live Interface for Causal Hybrid Ridge-Residual Boosting (Test R² = 0.8650 | Dhaka Local Time BST)</div>', unsafe_allow_html=True)
 
 def fit_and_save_champion_model(base_dir):
     with st.spinner("Fitting lightweight Hybrid Ridge-Residual Champion Model for your local Python/Scikit-Learn environment (~3 seconds)..."):
@@ -171,6 +196,30 @@ def get_aqi_band_info(pm25_val):
     else:
         return "Very Unhealthy / Hazardous (200+)", "aqi-hazardous", "Health warnings of emergency conditions. The entire population is more likely to be affected."
 
+def fetch_google_air_quality(api_key, lat=23.8103, lon=90.4125):
+    """Fetches official real-time PM2.5 for Dhaka directly from Google Air Quality API (Google Maps Platform / Google Cloud)."""
+    url = f"https://airquality.googleapis.com/v1/currentConditions:lookup?key={api_key}"
+    payload = json.dumps({
+        "location": {
+            "latitude": lat,
+            "longitude": lon
+        },
+        "extraComputations": [
+            "POLLUTANT_CONCENTRATIONS",
+            "POLLUTANT_ADDITIONAL_INFO"
+        ]
+    }).encode('utf-8')
+    
+    req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=6) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+        pm25_val = None
+        for pollutant in data.get('pollutants', []):
+            if pollutant.get('code') == 'pm25':
+                pm25_val = pollutant.get('concentration', {}).get('value')
+                break
+        return pm25_val, data
+
 def fetch_live_dhaka_data():
     """
     Fetches:
@@ -298,6 +347,34 @@ with tab1:
             try:
                 df_live, wttr_success, wttr_info = fetch_live_dhaka_data()
                 curr_pm   = float(df_live['pm25'].iloc[-1])
+                source_used_name = "Open-Meteo Copernicus Grid"
+                google_data_raw = {}
+                
+                # Check if Google Air Quality API is selected
+                if 'google_key' in locals() and google_key and "Google" in source_choice:
+                    try:
+                        g_pm, g_raw = fetch_google_air_quality(google_key)
+                        if g_pm is not None:
+                            curr_pm = float(g_pm)
+                            df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
+                            source_used_name = "Google Air Quality API (airquality.googleapis.com)"
+                            google_data_raw = g_raw
+                    except Exception as e_g:
+                        st.warning(f"Google API call failed ({e_g}). Using fallback feed.")
+                        
+                # Check if WAQI US Embassy Dhaka is selected
+                elif 'waqi_token' in locals() and waqi_token and "WAQI" in source_choice:
+                    try:
+                        url_waqi = f"https://api.waqi.info/feed/dhaka/?token={waqi_token}"
+                        req_w = urllib.request.Request(url_waqi, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req_w, timeout=5) as resp:
+                            d_w = json.loads(resp.read().decode('utf-8'))
+                            if d_w.get('status') == 'ok':
+                                curr_pm = float(d_w['data']['iaqi']['pm25']['v'])
+                                df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
+                                source_used_name = "US Embassy Dhaka Ground Monitor (WAQI / Baridhara)"
+                    except Exception as e_w:
+                        st.warning(f"WAQI API call failed ({e_w}). Using fallback feed.")
                 if 'waqi_token' in locals() and waqi_token:
                     try:
                         url_waqi = f"https://api.waqi.info/feed/dhaka/?token={waqi_token}"
@@ -345,7 +422,12 @@ Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    st.markdown('<a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
+                    if "Google" in source_choice and google_key:
+                        st.markdown('<a href="https://developers.google.com/maps/documentation/air-quality" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google API 🔗]</a>', unsafe_allow_html=True)
+                    elif "WAQI" in source_choice and waqi_token:
+                        st.markdown('<a href="https://aqicn.org/city/dhaka/" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
                 with c2:
                     st.metric("Current Temp", f"{curr_temp:.1f} °C")
                     st.markdown('<a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
