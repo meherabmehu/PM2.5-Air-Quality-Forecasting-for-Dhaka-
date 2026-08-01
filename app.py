@@ -29,6 +29,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Optional Free Ground-Sensor API Token in Sidebar ──────────────────────────
+with st.sidebar:
+    st.markdown("### 🔑 Live Ground Sensor API (Optional)")
+    st.write("By default, the app uses free open APIs (Open-Meteo + wttr.in). To pull instantaneous ground-sensor PM2.5 directly from the **US Embassy Dhaka monitor**, enter a free WAQI token below (`aqicn.org`):")
+    waqi_token = st.text_input("WAQI Free Token (aqicn.org)", value="", type="password", help="Get a free demo or personal token at https://aqicn.org/data-platform/token/")
+    if waqi_token:
+        st.success("✓ WAQI token active! Using US Embassy Dhaka ground monitor.")
+
 st.markdown('<div class="main-header">🌍 Dhaka PM2.5 Real-Time 24h-Ahead Forecaster</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Research-Grade Live Interface for Causal Hybrid Ridge-Residual Boosting (Test R² = 0.8650 | Dhaka Local Time BST)</div>', unsafe_allow_html=True)
 
@@ -290,6 +298,17 @@ with tab1:
             try:
                 df_live, wttr_success, wttr_info = fetch_live_dhaka_data()
                 curr_pm   = float(df_live['pm25'].iloc[-1])
+                if 'waqi_token' in locals() and waqi_token:
+                    try:
+                        url_waqi = f"https://api.waqi.info/feed/dhaka/?token={waqi_token}"
+                        req_w = urllib.request.Request(url_waqi, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req_w, timeout=5) as resp:
+                            d_w = json.loads(resp.read().decode('utf-8'))
+                            if d_w.get('status') == 'ok':
+                                curr_pm = float(d_w['data']['iaqi']['pm25']['v'])
+                                df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
+                    except Exception:
+                        pass
                 curr_temp = float(df_live['temperature'].iloc[-1])
                 curr_hum  = float(df_live['humidity'].iloc[-1])
                 curr_wind = float(df_live['wind_speed'].iloc[-1])
@@ -325,13 +344,17 @@ Source 2 (Open-Meteo Copernicus Air Quality Asia/Dhaka):
                 
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
-                    st.metric("Current PM2.5 (Live API)", f"{curr_pm:.1f} µg/m³")
+                    st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
+                    st.markdown('<a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
                 with c2:
-                    st.metric("Current Temp (wttr / Google)", f"{curr_temp:.1f} °C")
+                    st.metric("Current Temp", f"{curr_temp:.1f} °C")
+                    st.markdown('<a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
                 with c3:
-                    st.metric("Wind Speed (wttr / Google)", f"{curr_wind:.1f} km/h")
+                    st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
+                    st.markdown('<a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
                 with c4:
-                    st.metric("Rainfall (wttr / Google)", f"{curr_rain:.1f} mm")
+                    st.metric("Rainfall", f"{curr_rain:.1f} mm")
+                    st.markdown('<a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Source 🔗]</a>', unsafe_allow_html=True)
                     
                 st.markdown("---")
                 st.subheader("🔮 Forecasted 24-Hour Ahead Daily Average PM2.5 (Dhaka 24 Hours Later)")
