@@ -78,8 +78,13 @@ You can launch the **Real-Time Live Testing & Verification Web Dashboard** on an
 ### Step 1: Clone the Repository
 Open your terminal (or PowerShell on Windows) and clone the project:
 ```bash
+# Step 1: Navigate to your preferred directory (e.g., E:\ drive)
+cd E:\
+
+# Step 2: Clone the GitHub repository
 git clone https://github.com/meherabmehu/PM2.5-Air-Quality-Forecasting-for-Dhaka-.git
-cd "PM2.5-Air-Quality-Forecasting-for-Dhaka-"
+# Step 3: Enter the repository folder using the full path
+cd E:\PM2.5-Air-Quality-Forecasting-for-Dhaka-
 ```
 
 ### Step 2: Install Required Dependencies
