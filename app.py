@@ -284,13 +284,16 @@ with tab1:
     
     # Clickable Reference Links Box
     st.markdown("""
-    <div class="source-box">
-        <h4 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (যেখান থেকে ডেটা নেওয়া হচ্ছে, ভেরিফাই করার লিংক):</h4>
+        <div class="source-box">
+        <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 LIVE DATA SOURCE REFERENCE LINKS (CLICK TO VERIFY IN BROWSER):</h3>
+        <p style="margin-bottom:8px;">To verify where this live data comes from, click any of the official live endpoints below:</p>
         <ul style="margin-bottom:0px;">
-            <li><b>1. Google Weather Dhaka Live Search:</b> <a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank">https://www.google.com/search?q=weather+in+dhaka</a> <i>(100% matches: 28°C Temp, 82% Hum, 11 km/h Wind, 0.3 mm Rain)</i></li>
-            <li><b>2. US Embassy Dhaka Baridhara Ground Monitor:</b> <a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank">https://aqicn.org/city/dhaka/us-consulate/</a> <i>(100% matches: 152.0 µg/m³ PM2.5)</i></li>
-            <li><b>3. AQI.in Official Dhaka Dashboard:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a></li>
-            <li><b>4. IP Geolocation Location Detection API:</b> <a href="http://ip-api.com/json/" target="_blank">http://ip-api.com/json/</a> <i>(Detects location: """ + loc_name + """)</i></li>
+            <li><b>1. IQAir Official Dhaka Dashboard (Real-Time PM2.5 & Weather):</b> <a href="https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka" target="_blank">https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka</a> <i>(Real-time live PM2.5 & meteorology for Dhaka)</i></li>
+            <li><b>2. US Embassy Dhaka Ground Monitor (Baridhara Feed):</b> <a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank">https://aqicn.org/city/dhaka/us-consulate/</a></li>
+            <li><b>3. Live Weather (Google Weather / wttr.in Equivalent for Dhaka):</b> <a href="https://wttr.in/Dhaka?format=j1" target="_blank">https://wttr.in/Dhaka?format=j1</a> <i>(Mirrors Google Weather live)</i></li>
+            <li><b>4. AQI.in Official Dhaka Dashboard:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a></li>
+            <li><b>5. Google Cloud / Maps Platform Hosted Console:</b> <a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank">https://console.cloud.google.com/google/maps-hosted/</a></li>
+            <li><b>6. Copernicus Air Quality Grid (Asia/Dhaka BST Timezone):</b> <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1" target="_blank">Open-Meteo Air Quality Dhaka Feed</a></li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -320,17 +323,39 @@ with tab1:
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    st.markdown('<a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a>', unsafe_allow_html=True)
+                    if "IQAir" in source_choice:
+                        st.markdown('<a href="https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify IQAir Dhaka Live 🔗]</a>', unsafe_allow_html=True)
+                    elif "AQI.in" in source_choice:
+                        st.markdown('<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify AQI.in Dhaka Live 🔗]</a>', unsafe_allow_html=True)
+                    elif "Google" in source_choice and google_key:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://console.cloud.google.com/google/maps-hosted/" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Cloud API 🔗]</a><br><a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a></div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://aqicn.org/city/dhaka/us-consulate/" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify US Embassy Dhaka 🔗]</a><br><a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Copernicus API 🔗]</a></div>', unsafe_allow_html=True)
                 with c2:
                     st.metric("Current Temp", f"{curr_temp:.1f} °C")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
+                    if "IQAir" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify IQAir Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    elif "AQI.in" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify AQI.in Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
                 with c3:
                     st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
+                    if "IQAir" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify IQAir Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    elif "AQI.in" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify AQI.in Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
                 with c4:
                     st.metric("Rainfall", f"{curr_rain:.1f} mm")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
-                    
+                    if "IQAir" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.iqair.com/air-quality/bangladesh/dhaka/dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify IQAir Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    elif "AQI.in" in source_choice:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify AQI.in Dhaka Live 🔗]</a><br><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Google Weather 🔗]</a></div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="line-height:1.2; margin-top:4px;"><a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.80em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a><br><a href="https://wttr.in/Dhaka?format=j1" target="_blank" style="font-size:0.80em; color:#666; text-decoration:none;">[Verify Live Weather API 🔗]</a></div>', unsafe_allow_html=True)
+                
                 st.markdown("---")
                 st.subheader("🔮 ঠিক ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (24-Hour Ahead Daily Average Forecast)")
                 
