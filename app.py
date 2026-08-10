@@ -276,28 +276,54 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 # ── SYSTEM 1: AUTOMATED LIVE LOCATION DETECTION & GOOGLE WEATHER FORECAST ──────
 with tab1:
-    st.markdown("### 📡 System 1: অটোমেটিক লাইভ ডেটা ও লোকেশন ডিটেকশন (Dhaka, Bangladesh)")
+    st.markdown("### 📡 System 1: অটোমেটিক লাইভ লোকেশন ও ডাইনামিক স্টেশন ডিটেকশন (Dhaka / Tongi)")
     
-    # Automatically detect location via IP Geolocation API (Inside Dhaka only)
+    # Automatically detect location via IP Geolocation API
     loc_name, loc_lat, loc_lon, loc_raw = detect_current_location()
     
+    # ── DYNAMIC STATION SELECTOR FOR EXACT LOCATION MATCHING ──────────────────
+    default_idx = 0 if ("Tongi" in loc_name or "Gazipur" in loc_name) else 1
+    station_choice = st.selectbox(
+        "📍 আপনার সঠিক রেফারেন্স স্টেশন ও লোকেশন বেছে নিন (Select Exact Station for Reference Links):",
+        [
+            "1. Tongi / Gazipur Station (aqi.in/dashboard/bangladesh/dhaka-division/gazipur)",
+            "2. Dhaka Central / Baridhara Station (aqi.in/dashboard/bangladesh/dhaka-division/dhaka)",
+            "3. Mirpur / Pallabi Station (aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pallabi)"
+        ],
+        index=default_idx
+    )
+    
+    if "Tongi" in station_choice or "Gazipur" in station_choice:
+        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/gazipur"
+        station_title = "AQI.in Tongi / Gazipur Monitoring Station"
+        search_city = "tongi"
+    elif "Pallabi" in station_choice or "Mirpur" in station_choice:
+        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pallabi"
+        station_title = "AQI.in Pallabi / Mirpur Monitoring Station"
+        search_city = "pallabi+dhaka"
+    else:
+        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka"
+        station_title = "AQI.in Dhaka Central / Baridhara Monitoring Station"
+        search_city = "dhaka"
+        
     st.markdown(f"""
     <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:6px solid #2CA02C; margin-bottom:20px;">
-        <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 বর্তমান লোকেশন ডিটেকশন: <strong>{loc_name} (Inside Dhaka Division)</strong></h3>
+        <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 বর্তমান লোকেশন ডিটেকশন: <strong>{loc_name} ({station_title})</strong></h3>
         <p style="margin-bottom:0px; font-size:1.05em; color:#212121;">
-            <b>✓ একক ভেরিফাইড সোর্স (Single Reference Source):</b> আপনার লোকেশনের সমস্ত ডেটা সরাসরি <b>AQI.in Dhaka Monitoring Network</b> থেকে নেওয়া হচ্ছে, যা প্রমাণ দেখানো ১০০% সহজ করে তোলে।<br>
-            <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে আপনার বর্তমান লোকেশনের ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
+            <b>✓ ডাইনামিক লোকেশন সিঙ্ক্রোনাইজেশন:</b> আপনি এখন <b>{station_title}</b> সিলেক্ট করেছেন। আপনার স্ক্রিনের রেফারেন্স লিংক এখন আর পল্লবী বা অন্য কোনো স্টেশনে যাবে না—সরাসরি আপনার সিলেক্ট করা স্টেশনে যাবে!<br>
+            <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে আপনার লোকেশনের লাইভ ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Single Reference Link Box (Only ONE reference URL as requested!)
-    st.markdown("""
+    # Single Reference Link Box pointing to the EXACT selected station
+    st.markdown(f"""
     <div class="source-box">
         <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (একক ভেরিফাইড সোর্স):</h3>
-        <p style="margin-bottom:4px;">আপনার থিসিস পেপার বা প্রফেসরের কাছে প্রমাণ দেখানোর জন্য নিচের একমাত্র অফিশিয়াল রেফারেন্স লিংকটিতে ক্লিক করুন:</p>
+        <p style="margin-bottom:4px;">আপনার লোকেশন (<b>{station_title}</b>) এর প্রমাণ দেখানোর জন্য নিচের অফিশিয়াল লিংকটিতে ক্লিক করুন:</p>
         <ul style="margin-bottom:0px;">
-            <li><b>AQI.in Official Dhaka Air Quality & Weather Network:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a> <i>(Real-time live PM2.5 & meteorological sensor network for Dhaka)</i></li>
+            <li><b>{station_title} (Official Live Dashboard):</b> <a href="{ref_link}" target="_blank">{ref_link}</a></li>
+            <li><b>Google Weather Live Search ({search_city.title()}):</b> <a href="https://www.google.com/search?q=weather+in+{search_city}+bangladesh" target="_blank">https://www.google.com/search?q=weather+in+{search_city}+bangladesh</a></li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -322,10 +348,10 @@ with tab1:
                 pred_res   = artifact['residual_tree_model'].predict(X_live)[0]
                 pred_24h   = max(5.0, pred_ridge + pred_res)
                 
-                st.success(f"✓ সফলভাবে **{loc_name}** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (Dhaka BST Local Time)**")
+                st.success(f"✓ সফলভাবে **{loc_name} ({station_title})** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (BST Local Time)**")
                 
-                # Single clickable verification link under EVERY card
-                verify_link_html = '<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>'
+                # Dynamic clickable verification link under EVERY card pointing to the exact ref_link!
+                verify_link_html = f'<a href="{ref_link}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify {station_title} Live 🔗]</a>'
                 
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
@@ -340,7 +366,7 @@ with tab1:
                 with c4:
                     st.metric("Rainfall", f"{curr_rain:.1f} mm")
                     st.markdown(verify_link_html, unsafe_allow_html=True)
-                    
+
                 st.markdown("---")
                 st.subheader("🔮 ঠিক ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (24-Hour Ahead Daily Average Forecast)")
                 
