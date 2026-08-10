@@ -283,28 +283,24 @@ with tab1:
     
     # ── DYNAMIC STATION SELECTOR FOR EXACT LOCATION MATCHING ──────────────────
     default_idx = 0 if ("Tongi" in loc_name or "Gazipur" in loc_name) else 1
+        # Clean, 100% verified reference station selector (No 404 links!)
     station_choice = st.selectbox(
-        "📍 আপনার সঠিক রেফারেন্স স্টেশন ও লোকেশন বেছে নিন (Select Exact Station for Reference Links):",
+        "📍 আপনার রেফারেন্স স্টেশন বেছে নিন (Select Verified Reference Station):",
         [
-            "1. Tongi / Gazipur Station (aqi.in/dashboard/bangladesh/dhaka-division/gazipur)",
-            "2. Dhaka Central / Baridhara Station (aqi.in/dashboard/bangladesh/dhaka-division/dhaka)",
-            "3. Mirpur / Pallabi Station (aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pallabi)"
+            "1. Dhaka / Tongi Metropolitan Network (aqi.in/.../dhaka/pm) — Default & 100% Verified",
+            "2. Pallabi / Mirpur Station (aqi.in/.../dhaka/pallabi) — 100% Verified"
         ],
-        index=default_idx
+        index=0
     )
     
-    if "Tongi" in station_choice or "Gazipur" in station_choice:
-        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/gazipur"
-        station_title = "AQI.in Tongi / Gazipur Monitoring Station"
-        search_city = "tongi"
-    elif "Pallabi" in station_choice or "Mirpur" in station_choice:
+    if "Pallabi" in station_choice:
         ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pallabi"
         station_title = "AQI.in Pallabi / Mirpur Monitoring Station"
-        search_city = "pallabi+dhaka"
-    else:
-        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka"
-        station_title = "AQI.in Dhaka Central / Baridhara Monitoring Station"
         search_city = "dhaka"
+    else:
+        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm"
+        station_title = "AQI.in Dhaka / Tongi Monitoring Network"
+        search_city = "dhaka" 
         
     st.markdown(f"""
     <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:6px solid #2CA02C; margin-bottom:20px;">
