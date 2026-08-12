@@ -163,21 +163,6 @@ def get_aqi_band_info(pm25_val):
     else:
         return "Very Unhealthy / Hazardous (200+)", "aqi-hazardous", "Health warnings of emergency conditions. The entire population is more likely to be affected."
 
-def detect_current_location():
-    """Calls free IP Geolocation API (ip-api.com) to detect current city, latitude, and longitude."""
-    try:
-        url = "http://ip-api.com/json/"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            d = json.loads(resp.read().decode('utf-8'))
-            city = d.get("city", "Dhaka")
-            lat  = float(d.get("lat", 23.8103))
-            lon  = float(d.get("lon", 90.4125))
-            country = d.get("country", "Bangladesh")
-            return f"{city}, {country}", lat, lon, d
-    except Exception:
-        return "Dhaka, Bangladesh (Default)", 23.8103, 90.4125, {}
-
 def fetch_live_dhaka_data(lat=23.8103, lon=90.4125):
     """
     1. Fetches 14 days of hourly sequence from Open-Meteo Air Quality & Meteorology in Asia/Dhaka BST (UTC+6) timezone.
@@ -276,54 +261,29 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 # ── SYSTEM 1: AUTOMATED LIVE LOCATION DETECTION & GOOGLE WEATHER FORECAST ──────
 with tab1:
-    st.markdown("### 📡 System 1: অটোমেটিক লাইভ লোকেশন ও ডাইনামিক স্টেশন ডিটেকশন (Dhaka / Tongi)")
+    st.markdown("### 📡 System 1: অটোমেটিক লাইভ ডেটা ও ২৪ ঘন্টা পরের প্রেডিকশন (Dhaka, Bangladesh)")
     
-    # Automatically detect location via IP Geolocation API
-    loc_name, loc_lat, loc_lon, loc_raw = detect_current_location()
-    
-    # ── DYNAMIC STATION SELECTOR FOR EXACT LOCATION MATCHING ──────────────────
-    default_idx = 0 if ("Tongi" in loc_name or "Gazipur" in loc_name) else 1
-        # Clean, 100% verified reference station selector (No 404 links!)
-    station_choice = st.selectbox(
-        "📍 আপনার রেফারেন্স স্টেশন বেছে নিন (Select Verified Reference Station):",
-        [
-            "1. Dhaka / Tongi Metropolitan Network (aqi.in/.../dhaka/pm) — Default & 100% Verified",
-            "2. Pallabi / Mirpur Station (aqi.in/.../dhaka/pallabi) — 100% Verified"
-        ],
-        index=0
-    )
-    
-    if "Pallabi" in station_choice:
-        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pallabi"
-        station_title = "AQI.in Pallabi / Mirpur Monitoring Station"
-        search_city = "dhaka"
-    else:
-        ref_link = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm"
-        station_title = "AQI.in Dhaka / Tongi Monitoring Network"
-        search_city = "dhaka" 
-        
-    st.markdown(f"""
+    st.markdown("""
     <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:6px solid #2CA02C; margin-bottom:20px;">
-        <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 বর্তমান লোকেশন ডিটেকশন: <strong>{loc_name} ({station_title})</strong></h3>
+        <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 গবেষণার লোকেশন: <strong>Dhaka, Bangladesh (23.8103° N, 90.4125° E)</strong></h3>
         <p style="margin-bottom:0px; font-size:1.05em; color:#212121;">
-            <b>✓ ডাইনামিক লোকেশন সিঙ্ক্রোনাইজেশন:</b> আপনি এখন <b>{station_title}</b> সিলেক্ট করেছেন। আপনার স্ক্রিনের রেফারেন্স লিংক এখন আর পল্লবী বা অন্য কোনো স্টেশনে যাবে না—সরাসরি আপনার সিলেক্ট করা স্টেশনে যাবে!<br>
-            <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে আপনার লোকেশনের লাইভ ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
+            <b>✓ একক ভেরিফাইড সোর্স (Single Reference Source):</b> থিসিসের টপিক অনুযায়ী এটি শুধুমাত্র ঢাকার ডেটা ফেচ করে। প্রমাণ দেখানোর সুবিধার জন্য একমাত্র অফিশিয়াল রেফারেন্স হিসেবে <b>AQI.in Dhaka Monitoring Network</b> যুক্ত করা হয়েছে।<br>
+            <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে ঢাকার লাইভ ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Single Reference Link Box pointing to the EXACT selected station
-    st.markdown(f"""
+    # Single Reference Link Box (Only ONE reference URL as requested!)
+    st.markdown("""
     <div class="source-box">
         <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (একক ভেরিফাইড সোর্স):</h3>
-        <p style="margin-bottom:4px;">আপনার লোকেশন (<b>{station_title}</b>) এর প্রমাণ দেখানোর জন্য নিচের অফিশিয়াল লিংকটিতে ক্লিক করুন:</p>
+        <p style="margin-bottom:4px;">আপনার থিসিস পেপার বা প্রফেসরের কাছে প্রমাণ দেখানোর জন্য নিচের একমাত্র অফিশিয়াল রেফারেন্স লিংকটিতে ক্লিক করুন:</p>
         <ul style="margin-bottom:0px;">
-            <li><b>{station_title} (Official Live Dashboard):</b> <a href="{ref_link}" target="_blank">{ref_link}</a></li>
-            <li><b>Google Weather Live Search ({search_city.title()}):</b> <a href="https://www.google.com/search?q=weather+in+{search_city}+bangladesh" target="_blank">https://www.google.com/search?q=weather+in+{search_city}+bangladesh</a></li>
+            <li><b>AQI.in Official Dhaka Air Quality & Weather Network:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a> <i>(Real-time live PM2.5 & meteorological sensor network for Dhaka)</i></li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    
+
     if st.button("🔄 আমার বর্তমান লোকেশনের লাইভ ডেটা ফেচ করুন এবং ২৪ ঘন্টা পরের PM2.5 প্রেডিক্ট করুন", type="primary"):
         with st.spinner("Fetching live readings from single reference source & executing Hybrid Ridge-Residual Champion Model..."):
             try:
