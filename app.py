@@ -254,6 +254,7 @@ def engineer_live_features(df_input, feature_cols):
 
 # ── SINGLE REFERENCE SOURCE SIDEBAR (DHAKA ONLY & SIR-PROOF MATCH) ────────────
 # ── SIMPLE DHAKA-ONLY RESEARCH SCOPE SIDEBAR ──────────────────────────────────
+# ── SINGLE REFERENCE SOURCE SIDEBAR (DHAKA ONLY) ──────────────────────────────
 with st.sidebar:
     st.markdown("### 📍 Research Scope & Reference")
     st.markdown("""
@@ -261,11 +262,12 @@ with st.sidebar:
         <h4 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 Research Location: Dhaka, Bangladesh</h4>
         <p style="margin-bottom:0px; font-size:0.95em; color:#212121;">
             <b>• Target Area:</b> Dhaka City / Metropolitan Area (`Lat: 23.8103° N, Lon: 90.4125° E`).<br>
-            <b>• Official Reference Source:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">AQI.in Dhaka Monitoring Network</a>.
+            <b>• Official AQ Reference:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">AQI.in Dhaka Monitoring Network</a>.<br>
+            <b>• Official Weather Reference:</b> <a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank">Google Weather Dhaka</a> (`wttr.in` Live Stream).
         </p>
     </div>
     """, unsafe_allow_html=True)
-    st.info("✓ 100% Dhaka Sensor Synchronization Active.")
+    st.info("✓ Automated real-time sensor & meteorological ingestion enabled. Zero hardcoded defaults.")
 
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -277,40 +279,35 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 # ── SYSTEM 1: AUTOMATED LIVE LOCATION DETECTION & GOOGLE WEATHER FORECAST ──────
 with tab1:
-    st.markdown("### 📡 System 1: অটোমেটিক লাইভ ডেটা ও ২৪ ঘন্টা পরের প্রেডিকশন (Dhaka, Bangladesh)")
+    st.markdown("### 📡 System 1: অটোমেটিক লাইভ ডেটা ও ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (Dhaka, Bangladesh)")
     
     st.markdown("""
     <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:6px solid #2CA02C; margin-bottom:20px;">
         <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 গবেষণার লোকেশন: <strong>Dhaka, Bangladesh (23.8103° N, 90.4125° E)</strong></h3>
         <p style="margin-bottom:0px; font-size:1.05em; color:#212121;">
-            <b>✓ একক ভেরিফাইড সোর্স (Single Reference Source):</b> থিসিসের টপিক অনুযায়ী এটি শুধুমাত্র ঢাকার ডেটা ফেচ করে। প্রমাণ দেখানোর সুবিধার জন্য একমাত্র অফিশিয়াল রেফারেন্স হিসেবে <b>AQI.in Dhaka Monitoring Network</b> যুক্ত করা হয়েছে।<br>
+            <b>✓ ৫টি ভেরিয়েবল ইনজেশন (5 Meteorological & PM2.5 Variables):</b> আপনার ডাটাসেটের ৫টি ভেরিয়েবল (PM2.5, তাপমাত্রা, আর্দ্রতা, বাতাসের গতি ও বৃষ্টিপাত) সরাসরি লাইভ API থেকে লোড করা হয়।<br>
             <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে ঢাকার লাইভ ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Single Reference Link Box (Only ONE reference URL as requested!)
+    # Single Reference Link Box (Only official reference URLs as requested!)
     st.markdown("""
     <div class="source-box">
-        <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (প্রফেসরের কাছে প্রমাণ দেখানোর একক লিংক):</h3>
-        <p style="margin-bottom:4px;">অ্যাপে দেখানো ভ্যালু এবং ওয়েবসাইটের ভ্যালু ১০০% হুবহু মেলাতে নিচের অফিশিয়াল রেফারেন্স লিংকটিতে ক্লিক করুন:</p>
+        <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (অফিশিয়াল ভেরিফাইড সোর্স):</h3>
+        <p style="margin-bottom:4px;">অ্যাপে দেখানো ভ্যালু এবং ওয়েবসাইটের ভ্যালু ভেরিফাই করার জন্য নিচের অফিশিয়াল রেফারেন্স লিংকগুলোতে ক্লিক করুন:</p>
         <ul style="margin-bottom:0px;">
-            <li><b>AQI.in Official Dhaka Air Quality & Weather Network:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a> <i>(অ্যাপ ও ওয়েবসাইট দুই জায়গাতেই হুবহু একই ভ্যালু দেখাবে!)</i></li>
+            <li><b>1. AQI.in Official Dhaka Air Quality Network (PM2.5 Reference):</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a></li>
+            <li><b>2. Google Weather Dhaka Live Search (Temp, Humidity, Wind, Rain):</b> <a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank">https://www.google.com/search?q=weather+in+dhaka</a> <i>(`wttr.in/Dhaka?format=j1` Live API)</i></li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Input box to ensure 100% IDENTICAL match between app and AQI.in reference link
-    st.markdown("#### 🌍 AQI.in ঢাকার বর্তমান PM2.5 রিডিং সিঙ্ক (১০০% হুবহু ভ্যালু মেলানোর বক্স)")
-    aqi_in_val = st.number_input("AQI.in-এ বর্তমানে দেখানো ঢাকার PM2.5 ভ্যালু (µg/m³):", value=22.0, step=1.0, help="আপনার ব্রাউজারে aqi.in/dashboard/.../dhaka/pm লিঙ্কে যে ভ্যালু দেখাচ্ছে তা এখানে রাখলে অ্যাপ ও লিঙ্কে ১০০% হুবহু মিলে যাবে!")
     
     if st.button("🔄 ঢাকার লাইভ ডেটা ফেচ করুন এবং ২৪ ঘন্টা পরের PM2.5 প্রেডিক্ট করুন", type="primary"):
         with st.spinner("Fetching real-time Dhaka readings & executing Hybrid Ridge-Residual Champion Model..."):
             try:
                 df_live = fetch_live_dhaka_data()
-                curr_pm   = float(aqi_in_val)
-                df_live.loc[df_live.index[-1], 'pm25'] = curr_pm
-                
+                curr_pm   = float(df_live['pm25'].iloc[-1])
                 curr_temp = float(df_live['temperature'].iloc[-1])
                 curr_hum  = float(df_live['humidity'].iloc[-1])
                 curr_wind = float(df_live['wind_speed'].iloc[-1])
@@ -328,21 +325,23 @@ with tab1:
                 
                 st.success(f"✓ সফলভাবে **Dhaka, Bangladesh** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (Dhaka BST Local Time)**")
                 
-                ref_url = "https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm"
-                
-                c1, c2, c3, c4 = st.columns(4)
+                # ── DISPLAY ALL 5 METRIC CARDS (PM2.5, Temp, Humidity, Wind, Rain) ──
+                c1, c2, c3, c4, c5 = st.columns(5)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    st.markdown(f'<a href="{ref_url}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>', unsafe_allow_html=True)
+                    st.markdown('<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify AQI.in Live 🔗]</a>', unsafe_allow_html=True)
                 with c2:
                     st.metric("Current Temp", f"{curr_temp:.1f} °C")
-                    st.markdown(f'<a href="{ref_url}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>', unsafe_allow_html=True)
+                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
                 with c3:
-                    st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
-                    st.markdown(f'<a href="{ref_url}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>', unsafe_allow_html=True)
+                    st.metric("Relative Humidity", f"{curr_hum:.0f} %")
+                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
                 with c4:
+                    st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
+                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
+                with c5:
                     st.metric("Rainfall", f"{curr_rain:.1f} mm")
-                    st.markdown(f'<a href="{ref_url}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>', unsafe_allow_html=True)
+                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
                     
                 st.markdown("---")
                 st.subheader("🔮 ঠিক ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (24-Hour Ahead Daily Average Forecast)")
@@ -356,42 +355,12 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # ── 🏆 24-HOUR PREDICTION VERIFICATION & PROOF TRACKER (প্রেডিকশন সাফল্যের প্রমাণ) ──
-                st.markdown("---")
-                st.subheader("🏆 24-Hour Prediction Verification & Proof Tracker (প্রফেসরের কাছে প্রেডিকশন সাফল্যের প্রমাণ)")
-                st.write("নিচে দেখানো হচ্ছে—গতকালের প্রেডিক্ট করা ২৪ ঘন্টা পরের PM2.5 ভ্যালুর সাথে আজকের সত্যিকারের ভ্যালুর নির্ভুলতা (Accuracy), যা প্রমাণ করে মডেলটি রিয়েল-লাইফে ২৪ ঘন্টা পরের ভ্যালু সঠিকভাবে প্রেডিক্ট করতে সক্ষম:")
-                
-                # Let's compute a realistic past 7-day verification table showing >95% accuracy
-                actual_24h   = round(max(10.0, curr_pm * 0.95), 1)
-                predicted_24h = round(actual_24h + 0.6, 1)
-                acc_pct      = round(100.0 - (abs(actual_24h - predicted_24h) / max(1.0, actual_24h) * 100.0), 1)
-                
-                m1, m2, m3 = st.columns(3)
-                with m1:
-                    st.metric("গতকালকের ২৪h-Ahead প্রেডিকশন", f"{predicted_24h} µg/m³", "Targeted Forecast")
-                with m2:
-                    st.metric("আজকের সত্যিকারের PM2.5 গড়", f"{actual_24h} µg/m³", "Verified Reading")
-                with m3:
-                    st.metric("প্রেডিকশন নির্ভুলতা (Accuracy)", f"{acc_pct}% ✓", "সফল প্রেডিকশন প্রমাণিত")
-                    
-                st.markdown("#### 📊 বিগত ৭ দিনের ২৪-ঘন্টা পরের প্রেডিকশন বনাম সত্যিকারের ভ্যালু ভেরিফিকেশন টেবিল:")
-                proof_df = pd.DataFrame({
-                    'তারিখ (Date)': [
-                        (pd.Timestamp.now() - pd.Timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, 8)
-                    ],
-                    'সত্যিকারের PM2.5 (Actual µg/m³)': [19.2, 21.5, 23.0, 18.8, 22.4, 25.1, 20.7],
-                    '২৪-ঘন্টা পরের প্রেডিকশন (Predicted µg/m³)': [18.9, 21.8, 22.5, 19.3, 21.9, 24.6, 21.1],
-                    'এরর (Absolute Error µg/m³)': [0.3, 0.3, 0.5, 0.5, 0.5, 0.5, 0.4],
-                    'প্রেডিকশন স্ট্যাটাস (Verification)': ['সফল ✓ (Successful)', 'সফল ✓ (Successful)', 'সফল ✓ (Successful)', 'সফল ✓ (Successful)', 'সফল ✓ (Successful)', 'সফল ✓ (Successful)', 'সফল ✓ (Successful)']
-                })
-                st.dataframe(proof_df, use_container_width=True)
-                
                 st.markdown("#### Scientific Breakdown of Your 24-Hour Ahead Forecast:")
                 st.info(f"• **Stage 1 Linear Autoregression (`RidgeCV` Anchor):** Projected baseline = `{pred_ridge:.1f} µg/m³` (based on continuous 24h momentum, $R^2 = 0.8533$).\n• **Stage 2 Meteorological Correction (`HistGBM Tree Residual`):** Weather adjustment = `{pred_res:+.1f} µg/m³` (Current temperature `{curr_temp:.1f}°C`, humidity `{curr_hum:.0f}%`, wind `{curr_wind:.1f} km/h`, and rainfall `{curr_rain:.1f} mm`).")
                 
-                # Time-Series Chart
+                # ── 7-DAY HISTORICAL TREND & 24H-AHEAD FORECAST CHART ──
                 st.markdown("---")
-                st.subheader("📈 Dhaka Live Historical Trend & 24h-Ahead Forecast Point")
+                st.subheader("📊 7-Day Historical PM2.5 Trend & 24-Hour Ahead Forecast Chart")
                 
                 fig, ax = plt.subplots(figsize=(12, 4.5))
                 recent = df_live.iloc[-168:]
