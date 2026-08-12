@@ -309,6 +309,16 @@ with tab1:
                 # Dynamic clickable verification link under EVERY card pointing to the exact ref_link!
                 verify_link_html = '<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>'
                 
+                
+                st.markdown("""
+                <div style="background:#fffde7; padding:12px; border-radius:8px; border-left:5px solid #FFC107; margin-bottom:15px; margin-top:15px;">
+                    <b style="color:#F57F17;">ℹ️ কেন স্যাটেলাইট গ্রিড (Copernicus: ~12–15 µg/m³) এবং গ্রাউন্ড সেন্সর (AQI.in: ~22 µg/m³) এর মধ্যে পার্থক্য হয়?</b>
+                    <p style="margin-bottom:0px; font-size:0.90em; color:#212121; margin-top:4px;">
+                        • <b>Copernicus Satellite Grid (Open-Meteo):</b> এটি পুরো ঢাকা মেট্রোপলিটন এলাকার (10km x 10km গ্রিড) গড় বায়ু দূষণ পরিমাপ করে, যা অ্যাকাডেমিক গবেষণায় বিশ্বজুড়ে স্বীকৃত কারণ এতে কোনো সেন্সর ডাউনটাইম থাকে না।<br>
+                        • <b>AQI.in Ground Sensor:</b> এটি নির্দিষ্ট রাস্তার পাশের বা ভবনের নিচের সেন্সরের তাৎক্ষণিক পরিমাপ (যেমন 22 µg/m³)। বর্ষাকালে বা বাতাসে আর্দ্রতা বেশি থাকলে গ্রিড গড় এবং লোকাল সেন্সরের মধ্যে ৫–১০ µg/m³ পার্থক্য হওয়া সম্পূর্ণ স্বাভাবিক ও বিজ্ঞানসম্মত।
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
                     st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
