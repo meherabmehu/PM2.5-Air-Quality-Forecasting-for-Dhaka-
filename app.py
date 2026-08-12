@@ -253,7 +253,7 @@ def engineer_live_features(df_input, feature_cols):
     return df
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📡 System 1: অটোমেটিক লাইভ ডেটা (বর্তমান লোকেশন ও গুগল ওয়েদার) -> ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন",
+    "📡 System 1: অটোমেটিক লাইভ ডেটা (Dhaka, Bangladesh) -> ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন",
     "🎛️ System 2: ম্যানুয়াল ইনপুট দিয়ে যেকোনো দিনের ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন",
     "📂 System 3: Upload Custom CSV Data (বাল্ক প্রেডিকশন)",
     "📜 System 4: Paper & Method Citing Guide (থিসিস সাইটেশন)"
@@ -287,7 +287,7 @@ with tab1:
     if st.button("🔄 আমার বর্তমান লোকেশনের লাইভ ডেটা ফেচ করুন এবং ২৪ ঘন্টা পরের PM2.5 প্রেডিক্ট করুন", type="primary"):
         with st.spinner("Fetching live readings from single reference source & executing Hybrid Ridge-Residual Champion Model..."):
             try:
-                df_live = fetch_live_dhaka_data(loc_lat, loc_lon)
+                df_live = fetch_live_dhaka_data(23.8103, 90.4125)
                 curr_pm   = float(df_live['pm25'].iloc[-1])
                 curr_temp = float(df_live['temperature'].iloc[-1])
                 curr_hum  = float(df_live['humidity'].iloc[-1])
@@ -304,7 +304,7 @@ with tab1:
                 pred_res   = artifact['residual_tree_model'].predict(X_live)[0]
                 pred_24h   = max(5.0, pred_ridge + pred_res)
                 
-                st.success(f"✓ সফলভাবে **{loc_name} ({station_title})** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (BST Local Time)**")
+                st.success(f"✓ সফলভাবে **Dhaka, Bangladesh ({station_title})** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (BST Local Time)**")
                 
                 # Dynamic clickable verification link under EVERY card pointing to the exact ref_link!
                 verify_link_html = f'<a href="{ref_link}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify {station_title} Live 🔗]</a>'
