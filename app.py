@@ -304,10 +304,10 @@ with tab1:
                 pred_res   = artifact['residual_tree_model'].predict(X_live)[0]
                 pred_24h   = max(5.0, pred_ridge + pred_res)
                 
-                st.success(f"✓ সফলভাবে **Dhaka, Bangladesh ({station_title})** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (BST Local Time)**")
+                st.success(f"✓ সফলভাবে **Dhaka, Bangladesh** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (Dhaka BST Local Time)**")
                 
                 # Dynamic clickable verification link under EVERY card pointing to the exact ref_link!
-                verify_link_html = f'<a href="{ref_link}" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify {station_title} Live 🔗]</a>'
+                verify_link_html = '<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Live Data Source 🔗]</a>'
                 
                 c1, c2, c3, c4 = st.columns(4)
                 with c1:
