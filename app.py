@@ -1,133 +1,166 @@
-import os, sys, json, pickle, urllib.request
+import os
+import json
+import pickle
+import urllib.request
 import datetime
+from datetime import timezone, timedelta
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import streamlit as st
 
+BST = timezone(timedelta(hours=6))
+DHAKA_LAT = 23.8103
+DHAKA_LON = 90.4125
+TWC_KEY = "e1f10a1e78da46f5b10a1e78da96f525"
+
 st.set_page_config(
-    page_title="Dhaka PM2.5 Real-Time 24h-Ahead Forecaster (2 Systems)",
+    page_title="Dhaka PM2.5 — 24h-Ahead Live Forecaster",
     page_icon="🌍",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS for Publication-Ready Academic Aesthetic ───────────────────────
-st.markdown("""
+st.markdown(
+    """
 <style>
-    .reportview-container { background: #f8f9fa; }
-    .main-header { font-size: 2.1rem; font-weight: 700; color: #185FA5; margin-bottom: 0px; }
-    .sub-header { font-size: 1.1rem; color: #495057; margin-top: 5px; margin-bottom: 25px; }
-    .metric-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-left: 5px solid #185FA5; }
+    .main-header { font-size: 2.0rem; font-weight: 700; color: #185FA5; margin-bottom: 0px; }
+    .sub-header { font-size: 1.02rem; color: #495057; margin-top: 4px; margin-bottom: 18px; }
     .aqi-good { border-left: 8px solid #2CA02C; background: #e8f5e9; padding: 15px; border-radius: 8px; }
     .aqi-moderate { border-left: 8px solid #FFC107; background: #fffde7; padding: 15px; border-radius: 8px; }
     .aqi-unhealthy-sg { border-left: 8px solid #FF9800; background: #fff3e0; padding: 15px; border-radius: 8px; }
     .aqi-unhealthy { border-left: 8px solid #F44336; background: #ffebee; padding: 15px; border-radius: 8px; }
     .aqi-hazardous { border-left: 8px solid #8E24AA; background: #f3e5f5; padding: 15px; border-radius: 8px; }
-    .source-box { background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 6px solid #185FA5; margin-bottom: 25px; }
+    .source-box { background: #e3f2fd; padding: 14px 16px; border-radius: 8px; border-left: 6px solid #185FA5; margin-bottom: 18px; }
+    .note-box { background: #fff8e1; padding: 12px 14px; border-radius: 8px; border-left: 5px solid #F9A825; margin: 10px 0 18px 0; }
+    a { color: #185FA5; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-st.markdown('<div class="main-header">🌍 Dhaka PM2.5 Real-Time 24h-Ahead Forecaster (2 Systems)</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">System 1: Automated Live Geolocation + Google Weather | System 2: Manual Any-Day Input | Hybrid Champion Test R² = 0.8650</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🌍 Dhaka PM2.5 — 24-Hour Ahead Live Forecaster</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-header">Thesis live-test interface · Dhaka only · System 1: live fetch + 24h forecast · System 2: manual any-day input</div>',
+    unsafe_allow_html=True,
+)
+
+
+def now_dhaka_naive():
+    try:
+        return pd.Timestamp.now(tz="Asia/Dhaka").tz_localize(None)
+    except Exception:
+        return pd.Timestamp.utcnow() + pd.Timedelta(hours=6)
+
+
+def http_json(url, timeout=20):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "DhakaPM25Forecaster/1.0 (thesis live test)",
+            "Accept": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
 
 def fit_and_save_champion_model(base_dir):
-    with st.spinner("Fitting lightweight Hybrid Ridge-Residual Champion Model for your local Python/Scikit-Learn environment (~3 seconds)..."):
+    with st.spinner("Fitting Hybrid Ridge-Residual model for this Python/scikit-learn version..."):
         data_candidates = [
             os.path.join(base_dir, "data", "final_dataset_clean.csv"),
+            os.path.join(base_dir, "Dataset", "final_dataset_clean.csv"),
             "data/final_dataset_clean.csv",
+            "Dataset/final_dataset_clean.csv",
             "final_dataset_clean.csv",
-            os.path.join(base_dir, "final_dataset_clean.csv"),
-            "Dataset/final_dataset_clean.csv"
         ]
         data_path = next((p for p in data_candidates if os.path.exists(p)), None)
         if not data_path:
-            st.error("Could not locate `final_dataset_clean.csv` in `data/` or `Dataset/` folder.")
+            st.error("Could not locate `final_dataset_clean.csv`.")
             return None
-            
-        df_clean = pd.read_csv(data_path)
-        df_clean['datetime'] = pd.to_datetime(df_clean['datetime'])
-        df_clean = df_clean.sort_values('datetime').reset_index(drop=True)
-        
-        df = df_clean.copy()
-        df = df[df['pm25'] >= 1].reset_index(drop=True)
-        p995 = df['pm25'].quantile(0.995)
-        df.loc[df['pm25'] > p995, 'pm25'] = p995
-        
-        pm25 = df['pm25']
-        df['pm25_curr'] = pm25
-        
+
+        df = pd.read_csv(data_path)
+        df["datetime"] = pd.to_datetime(df["datetime"])
+        df = df.sort_values("datetime").reset_index(drop=True)
+        df = df[df["pm25"] >= 1].reset_index(drop=True)
+        p995 = df["pm25"].quantile(0.995)
+        df.loc[df["pm25"] > p995, "pm25"] = p995
+
+        pm25 = df["pm25"]
+        df["pm25_curr"] = pm25
         for lag in [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24, 36, 48, 72, 120, 168]:
-            df[f'pm25_lag_{lag}'] = pm25.shift(lag)
+            df[f"pm25_lag_{lag}"] = pm25.shift(lag)
         for span in [3, 6, 12, 24, 48, 72, 168]:
-            df[f'pm25_ema_{span}'] = pm25.ewm(span=span, adjust=False).mean()
+            df[f"pm25_ema_{span}"] = pm25.ewm(span=span, adjust=False).mean()
         for w in [3, 6, 12, 24, 48, 72, 168]:
-            base = pm25.rolling(w, min_periods=max(1, int(w*0.5)))
-            df[f'pm25_roll_mean_{w}']   = base.mean()
-            df[f'pm25_roll_std_{w}']    = base.std()
-            df[f'pm25_roll_max_{w}']    = base.max()
-            df[f'pm25_roll_min_{w}']    = base.min()
-            
-        df['target'] = pm25.shift(-24).rolling(24, min_periods=24).mean()
-        df['roll24_diff_24'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(24)
-        df['roll24_diff_48'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(48)
-        df['roll24_diff_1']  = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(1)
-        df['roll24_accel']   = df['roll24_diff_24'] - df['roll24_diff_24'].shift(24)
-        df['roll24_growth']  = df['pm25_roll_mean_24'] / (df['pm25_roll_mean_24'].shift(24) + 1e-5)
-        
-        df['hour']  = df['datetime'].dt.hour
-        df['month'] = df['datetime'].dt.month
-        df['doy']   = df['datetime'].dt.dayofyear
-        df['hour_sin'] = np.sin(2*np.pi*df['hour']/24.0)
-        df['hour_cos'] = np.cos(2*np.pi*df['hour']/24.0)
-        df['doy_sin']  = np.sin(2*np.pi*df['doy']/365.25)
-        df['doy_cos']  = np.cos(2*np.pi*df['doy']/365.25)
-        
-        for col in ['temperature', 'humidity', 'wind_speed', 'rainfall']:
+            base = pm25.rolling(w, min_periods=max(1, int(w * 0.5)))
+            df[f"pm25_roll_mean_{w}"] = base.mean()
+            df[f"pm25_roll_std_{w}"] = base.std()
+            df[f"pm25_roll_max_{w}"] = base.max()
+            df[f"pm25_roll_min_{w}"] = base.min()
+
+        df["target"] = pm25.shift(-24).rolling(24, min_periods=24).mean()
+        df["roll24_diff_24"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(24)
+        df["roll24_diff_48"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(48)
+        df["roll24_diff_1"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(1)
+        df["roll24_accel"] = df["roll24_diff_24"] - df["roll24_diff_24"].shift(24)
+        df["roll24_growth"] = df["pm25_roll_mean_24"] / (df["pm25_roll_mean_24"].shift(24) + 1e-5)
+
+        df["hour"] = df["datetime"].dt.hour
+        df["month"] = df["datetime"].dt.month
+        df["doy"] = df["datetime"].dt.dayofyear
+        df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24.0)
+        df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24.0)
+        df["doy_sin"] = np.sin(2 * np.pi * df["doy"] / 365.25)
+        df["doy_cos"] = np.cos(2 * np.pi * df["doy"] / 365.25)
+
+        for col in ["temperature", "humidity", "wind_speed", "rainfall"]:
             for lag in [1, 6, 12, 24, 48]:
-                df[f'{col}_lag_{lag}'] = df[col].shift(lag)
-            df[f'{col}_roll24'] = df[col].rolling(24, min_periods=12).mean()
-            
-        DROP_ALWAYS = ['datetime', 'target']
-        FEATURE_COLS = [c for c in df.columns if c not in DROP_ALWAYS]
-        df_sel = df[FEATURE_COLS + ['target']].dropna().reset_index(drop=True)
-        
-        X_all = df_sel[FEATURE_COLS].values
-        y_all = df_sel['target'].values
-        
+                df[f"{col}_lag_{lag}"] = df[col].shift(lag)
+            df[f"{col}_roll24"] = df[col].rolling(24, min_periods=12).mean()
+
+        drop_always = ["datetime", "target"]
+        feature_cols = [c for c in df.columns if c not in drop_always]
+        df_sel = df[feature_cols + ["target"]].dropna().reset_index(drop=True)
+        X_all = df_sel[feature_cols].values
+        y_all = df_sel["target"].values
+
         from sklearn.preprocessing import StandardScaler
         from sklearn.linear_model import RidgeCV
         from sklearn.ensemble import HistGradientBoostingRegressor
-        
+
         scaler = StandardScaler()
         X_all_s = scaler.fit_transform(X_all)
-        
         m_ridge = RidgeCV(alphas=np.logspace(-2, 6, 50))
         m_ridge.fit(X_all_s, y_all)
         res_all = y_all - m_ridge.predict(X_all_s)
-        
-        m_res = HistGradientBoostingRegressor(loss='squared_error', max_iter=400, learning_rate=0.03, max_depth=4, min_samples_leaf=15, random_state=42)
+        m_res = HistGradientBoostingRegressor(
+            loss="squared_error",
+            max_iter=400,
+            learning_rate=0.03,
+            max_depth=4,
+            min_samples_leaf=15,
+            random_state=42,
+        )
         m_res.fit(X_all, res_all)
-        
+
         artifact = {
-            'scaler': scaler,
-            'ridge_model': m_ridge,
-            'residual_tree_model': m_res,
-            'feature_cols': FEATURE_COLS,
-            'p995': p995
+            "scaler": scaler,
+            "ridge_model": m_ridge,
+            "residual_tree_model": m_res,
+            "feature_cols": feature_cols,
+            "p995": p995,
         }
-        
         models_dir = os.path.join(base_dir, "models")
         os.makedirs(models_dir, exist_ok=True)
-        out_pkl = os.path.join(models_dir, "live_hybrid_champion.pkl")
         try:
-            with open(out_pkl, 'wb') as f:
+            with open(os.path.join(models_dir, "live_hybrid_champion.pkl"), "wb") as f:
                 pickle.dump(artifact, f)
         except Exception:
             pass
-            
         return artifact
+
 
 @st.cache_resource
 def load_model_artifacts():
@@ -135,338 +168,591 @@ def load_model_artifacts():
     candidates = [
         os.path.join(base_dir, "models", "live_hybrid_champion.pkl"),
         os.path.join("models", "live_hybrid_champion.pkl"),
-        "/home/user/models/live_hybrid_champion.pkl",
-        "/home/user/Dhaka_PM25_Live_Verification_Suite/models/live_hybrid_champion.pkl"
     ]
     for p in candidates:
         if os.path.exists(p):
             try:
-                with open(p, 'rb') as f:
+                with open(p, "rb") as f:
                     return pickle.load(f)
             except Exception:
-                st.warning("Note: Re-fitting lightweight model for your local Python/Scikit-Learn environment...")
+                st.warning("Pickle version mismatch — re-fitting a local model copy...")
                 break
-                
     return fit_and_save_champion_model(base_dir)
+
 
 artifact = load_model_artifacts()
 
+
 def get_aqi_band_info(pm25_val):
     if pm25_val <= 50:
-        return "Good (0–50)", "aqi-good", "Air quality is considered satisfactory, and air pollution poses little or no risk."
-    elif pm25_val <= 100:
-        return "Moderate (51–100)", "aqi-moderate", "Air quality is acceptable; however, sensitive individuals should monitor prolonged exposure."
-    elif pm25_val <= 150:
-        return "Unhealthy for Sensitive Groups (101–150)", "aqi-unhealthy-sg", "Members of sensitive groups may experience health effects. The general public is less likely to be affected."
-    elif pm25_val <= 200:
-        return "Unhealthy (151–200)", "aqi-unhealthy", "Everyone may begin to experience health effects; members of sensitive groups may experience more serious effects."
-    else:
-        return "Very Unhealthy / Hazardous (200+)", "aqi-hazardous", "Health warnings of emergency conditions. The entire population is more likely to be affected."
-
-def fetch_live_dhaka_data(lat=23.8103, lon=90.4125):
-    """
-    1. Fetches 14 days of hourly sequence from Open-Meteo Air Quality & Meteorology in Asia/Dhaka BST (UTC+6) timezone.
-    2. Enriches latest current hour with live real-time weather from wttr.in (Google Weather equivalent).
-    3. PURE LIVE SENSOR INGESTION — ZERO HARDCODED OR DEFAULT VALUES.
-    """
-    url_aq = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
-    url_wx = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,rain&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
-    url_wttr = "https://wttr.in/Dhaka?format=j1"
-    
-    req_aq = urllib.request.urlopen(url_aq)
-    data_aq = json.loads(req_aq.read().decode('utf-8'))
-    
-    req_wx = urllib.request.urlopen(url_wx)
-    data_wx = json.loads(req_wx.read().decode('utf-8'))
-    
-    times = pd.to_datetime(data_aq['hourly']['time'])
-    pm_vals = data_aq['hourly']['pm2_5']
-    
-    df_live = pd.DataFrame({
-        'datetime': times,
-        'pm25': pm_vals,
-        'temperature': data_wx['hourly']['temperature_2m'],
-        'humidity': data_wx['hourly']['relative_humidity_2m'],
-        'wind_speed': data_wx['hourly']['wind_speed_10m'],
-        'rainfall': data_wx['hourly']['rain']
-    })
-    df_live = df_live.dropna().sort_values('datetime').reset_index(drop=True)
-    
-    # Try to enrich latest weather with live wttr.in feed
-    try:
-        req_w = urllib.request.Request(url_wttr, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_w, timeout=4) as resp:
-            data_w = json.loads(resp.read().decode('utf-8'))
-            curr = data_w['current_condition'][0]
-            df_live.loc[df_live.index[-1], 'temperature'] = float(curr['temp_C'])
-            df_live.loc[df_live.index[-1], 'humidity']    = float(curr['humidity'])
-            df_live.loc[df_live.index[-1], 'wind_speed']  = float(curr['windspeedKmph'])
-            df_live.loc[df_live.index[-1], 'rainfall']    = float(curr.get('precipMM', 0.0))
-    except Exception:
-        pass
-        
-    return df_live
+        return "Good (0–50)", "aqi-good", "Air quality is satisfactory for most people."
+    if pm25_val <= 100:
+        return "Moderate (51–100)", "aqi-moderate", "Acceptable; sensitive people should limit long outdoor exposure."
+    if pm25_val <= 150:
+        return "Unhealthy for Sensitive Groups (101–150)", "aqi-unhealthy-sg", "Sensitive groups may feel health effects."
+    if pm25_val <= 200:
+        return "Unhealthy (151–200)", "aqi-unhealthy", "Everyone may begin to feel health effects."
+    return "Very Unhealthy / Hazardous (200+)", "aqi-hazardous", "Health warning of emergency conditions."
 
 
 def engineer_live_features(df_input, feature_cols):
     df = df_input.copy()
-    pm25 = df['pm25']
-    df['pm25_curr'] = pm25
-    
+    pm25 = df["pm25"]
+    df["pm25_curr"] = pm25
     for lag in [1, 2, 3, 4, 5, 6, 8, 12, 16, 20, 24, 36, 48, 72, 120, 168]:
-        df[f'pm25_lag_{lag}'] = pm25.shift(lag)
-        
+        df[f"pm25_lag_{lag}"] = pm25.shift(lag)
     for span in [3, 6, 12, 24, 48, 72, 168]:
-        df[f'pm25_ema_{span}'] = pm25.ewm(span=span, adjust=False).mean()
-        
+        df[f"pm25_ema_{span}"] = pm25.ewm(span=span, adjust=False).mean()
     for w in [3, 6, 12, 24, 48, 72, 168]:
-        base = pm25.rolling(w, min_periods=max(1, int(w*0.5)))
-        df[f'pm25_roll_mean_{w}']   = base.mean()
-        df[f'pm25_roll_std_{w}']    = base.std()
-        df[f'pm25_roll_max_{w}']    = base.max()
-        df[f'pm25_roll_min_{w}']    = base.min()
-        
-    df['roll24_diff_24'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(24)
-    df['roll24_diff_48'] = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(48)
-    df['roll24_diff_1']  = df['pm25_roll_mean_24'] - df['pm25_roll_mean_24'].shift(1)
-    df['roll24_accel']   = df['roll24_diff_24'] - df['roll24_diff_24'].shift(24)
-    df['roll24_growth']  = df['pm25_roll_mean_24'] / (df['pm25_roll_mean_24'].shift(24) + 1e-5)
-    
-    df['hour']  = df['datetime'].dt.hour
-    df['month'] = df['datetime'].dt.month
-    df['doy']   = df['datetime'].dt.dayofyear
-    df['hour_sin'] = np.sin(2*np.pi*df['hour']/24.0)
-    df['hour_cos'] = np.cos(2*np.pi*df['hour']/24.0)
-    df['doy_sin']  = np.sin(2*np.pi*df['doy']/365.25)
-    df['doy_cos']  = np.cos(2*np.pi*df['doy']/365.25)
-    
-    for col in ['temperature', 'humidity', 'wind_speed', 'rainfall']:
+        base = pm25.rolling(w, min_periods=max(1, int(w * 0.5)))
+        df[f"pm25_roll_mean_{w}"] = base.mean()
+        df[f"pm25_roll_std_{w}"] = base.std()
+        df[f"pm25_roll_max_{w}"] = base.max()
+        df[f"pm25_roll_min_{w}"] = base.min()
+    df["roll24_diff_24"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(24)
+    df["roll24_diff_48"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(48)
+    df["roll24_diff_1"] = df["pm25_roll_mean_24"] - df["pm25_roll_mean_24"].shift(1)
+    df["roll24_accel"] = df["roll24_diff_24"] - df["roll24_diff_24"].shift(24)
+    df["roll24_growth"] = df["pm25_roll_mean_24"] / (df["pm25_roll_mean_24"].shift(24) + 1e-5)
+    df["hour"] = df["datetime"].dt.hour
+    df["month"] = df["datetime"].dt.month
+    df["doy"] = df["datetime"].dt.dayofyear
+    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24.0)
+    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24.0)
+    df["doy_sin"] = np.sin(2 * np.pi * df["doy"] / 365.25)
+    df["doy_cos"] = np.cos(2 * np.pi * df["doy"] / 365.25)
+    for col in ["temperature", "humidity", "wind_speed", "rainfall"]:
         for lag in [1, 6, 12, 24, 48]:
-            df[f'{col}_lag_{lag}'] = df[col].shift(lag)
-        df[f'{col}_roll24'] = df[col].rolling(24, min_periods=12).mean()
-        
+            df[f"{col}_lag_{lag}"] = df[col].shift(lag)
+        df[f"{col}_roll24"] = df[col].rolling(24, min_periods=12).mean()
     for c in feature_cols:
         if c not in df.columns:
             df[c] = 0.0
-            
     df = df.bfill().ffill().fillna(0.0)
     return df
 
-# ── SINGLE REFERENCE SOURCE SIDEBAR (DHAKA ONLY & SIR-PROOF MATCH) ────────────
-# ── SIMPLE DHAKA-ONLY RESEARCH SCOPE SIDEBAR ──────────────────────────────────
-# ── SINGLE REFERENCE SOURCE SIDEBAR (DHAKA ONLY) ──────────────────────────────
+
+def predict_24h(df_feat, artifact):
+    latest = df_feat.iloc[-1:]
+    X = latest[artifact["feature_cols"]].values
+    Xs = artifact["scaler"].transform(X)
+    ridge = float(artifact["ridge_model"].predict(Xs)[0])
+    resid = float(artifact["residual_tree_model"].predict(X)[0])
+    return max(5.0, ridge + resid), ridge, resid
+
+
+def fetch_google_weather(api_key):
+    url = (
+        "https://weather.googleapis.com/v1/currentConditions:lookup"
+        f"?key={api_key}&location.latitude={DHAKA_LAT}&location.longitude={DHAKA_LON}"
+        "&unitsSystem=METRIC"
+    )
+    data = http_json(url, timeout=15)
+    wind = data.get("wind", {}).get("speed", {}) or {}
+    rain = (((data.get("precipitation") or {}).get("qpf") or {}).get("quantity"))
+    return {
+        "temperature": float(data["temperature"]["degrees"]),
+        "humidity": float(data["relativeHumidity"]),
+        "wind_speed": float(wind.get("value", 0.0)),
+        "rainfall": float(rain or 0.0),
+        "time": data.get("currentTime", ""),
+        "source_name": "Google Weather API (official)",
+        "verify_url": "https://www.google.com/search?q=weather+in+dhaka&hl=en",
+        "api_url": url.split("&key=")[0] + "&key=YOUR_KEY&location.latitude=23.8103&location.longitude=90.4125&unitsSystem=METRIC",
+    }
+
+
+def fetch_weather_channel():
+    url = (
+        "https://api.weather.com/v3/wx/observations/current"
+        f"?geocode={DHAKA_LAT},{DHAKA_LON}&units=m&language=en-US&format=json&apiKey={TWC_KEY}"
+    )
+    data = http_json(url, timeout=15)
+    return {
+        "temperature": float(data["temperature"]),
+        "humidity": float(data["relativeHumidity"]),
+        "wind_speed": float(data["windSpeed"]),
+        "rainfall": float(data.get("precip1Hour") or 0.0),
+        "time": data.get("validTimeLocal") or "",
+        "phrase": data.get("wxPhraseLong") or "",
+        "source_name": "The Weather Channel / weather.com (Google Weather data partner)",
+        "verify_url": "https://weather.com/weather/today/l/23.81,90.41?unit=m",
+        "api_url": url,
+    }
+
+
+def fetch_live_dhaka_data(google_api_key=""):
+    """
+    Hourly history: Open-Meteo (needed for 14-day lags + 7-day backtest).
+    Current display weather: Google Weather API if key given, else Weather Channel.
+    Current PM2.5: Open-Meteo *current* hour — never a future forecast hour.
+    """
+    url_aq = (
+        "https://air-quality-api.open-meteo.com/v1/air-quality"
+        f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}"
+        "&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
+    )
+    url_wx = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}"
+        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain"
+        "&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,rain"
+        "&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
+    )
+    data_aq = http_json(url_aq)
+    data_wx = http_json(url_wx)
+
+    df = pd.DataFrame(
+        {
+            "datetime": pd.to_datetime(data_aq["hourly"]["time"]),
+            "pm25": data_aq["hourly"]["pm2_5"],
+            "temperature": data_wx["hourly"]["temperature_2m"],
+            "humidity": data_wx["hourly"]["relative_humidity_2m"],
+            "wind_speed": data_wx["hourly"]["wind_speed_10m"],
+            "rainfall": data_wx["hourly"]["rain"],
+        }
+    )
+    now = now_dhaka_naive()
+    df = df[df["datetime"] <= now.floor("h")].dropna().sort_values("datetime").reset_index(drop=True)
+    if df.empty:
+        raise RuntimeError("Open-Meteo returned no observed hours for Dhaka.")
+
+    curr_pm = float(data_aq["current"]["pm2_5"])
+    curr_pm_time = data_aq["current"]["time"]
+    df.loc[df.index[-1], "pm25"] = curr_pm
+
+    om_cur = data_wx["current"]
+    om_weather = {
+        "temperature": float(om_cur["temperature_2m"]),
+        "humidity": float(om_cur["relative_humidity_2m"]),
+        "wind_speed": float(om_cur["wind_speed_10m"]),
+        "rainfall": float(om_cur["rain"]),
+        "time": om_cur["time"],
+        "source_name": "Open-Meteo current",
+        "verify_url": url_wx,
+        "api_url": url_wx,
+    }
+
+    used_weather = None
+    weather_error = ""
+    if google_api_key.strip():
+        try:
+            used_weather = fetch_google_weather(google_api_key.strip())
+        except Exception as exc:
+            weather_error = f"Google Weather API failed ({exc}). Falling back."
+
+    if used_weather is None:
+        try:
+            used_weather = fetch_weather_channel()
+        except Exception as exc:
+            weather_error = (weather_error + " " if weather_error else "") + f"Weather.com failed ({exc}). Using Open-Meteo current."
+            used_weather = om_weather
+
+    df.loc[df.index[-1], "temperature"] = used_weather["temperature"]
+    df.loc[df.index[-1], "humidity"] = used_weather["humidity"]
+    df.loc[df.index[-1], "wind_speed"] = used_weather["wind_speed"]
+    df.loc[df.index[-1], "rainfall"] = used_weather["rainfall"]
+
+    meta = {
+        "fetched_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "pm": {
+            "value": curr_pm,
+            "time": curr_pm_time,
+            "source_name": "Open-Meteo Air Quality — current hour (not forecast)",
+            "verify_url": (
+                "https://air-quality-api.open-meteo.com/v1/air-quality"
+                f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}&current=pm2_5&timezone=Asia%2FDhaka"
+            ),
+        },
+        "weather": used_weather,
+        "open_meteo_weather": om_weather,
+        "weather_error": weather_error.strip(),
+        "history_url": url_aq,
+    }
+    return df, meta
+
+
+def backtest_last_7_days(df, artifact):
+    """Compare 24h-ahead daily-mean predictions vs the actual next-24h mean."""
+    df_feat = engineer_live_features(df, artifact["feature_cols"])
+    pm_vals = df["pm25"].to_numpy(dtype=float)
+    n = len(df)
+    end = n - 24
+    if end <= 180:
+        return pd.DataFrame()
+    start = max(168, end - 168)
+    X = df_feat.iloc[start:end][artifact["feature_cols"]].values
+    Xs = artifact["scaler"].transform(X)
+    pred = artifact["ridge_model"].predict(Xs) + artifact["residual_tree_model"].predict(X)
+    pred = np.maximum(5.0, pred)
+    actual = np.array([np.nanmean(pm_vals[i + 1 : i + 25]) for i in range(start, end)], dtype=float)
+    out = pd.DataFrame(
+        {
+            "datetime": df["datetime"].iloc[start:end].to_numpy(),
+            "predicted_24h_mean": pred,
+            "actual_24h_mean": actual,
+        }
+    )
+    return out.dropna()
+
+
+def metric_with_source(label, value, unit, source_name, when, verify_url):
+    st.metric(label, f"{value} {unit}")
+    st.caption(f"{source_name}")
+    if when:
+        st.caption(f"Time: {when} (Dhaka)")
+    st.markdown(f'<a href="{verify_url}" target="_blank">[Open this source 🔗]</a>', unsafe_allow_html=True)
+
+
 with st.sidebar:
-    st.markdown("### 📍 Research Scope & Reference")
-    st.markdown("""
-    <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:5px solid #2CA02C;">
-        <h4 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 Research Location: Dhaka, Bangladesh</h4>
-        <p style="margin-bottom:0px; font-size:0.95em; color:#212121;">
-            <b>• Target Area:</b> Dhaka City / Metropolitan Area (`Lat: 23.8103° N, Lon: 90.4125° E`).<br>
-            <b>• Official AQ Reference:</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">AQI.in Dhaka Monitoring Network</a>.<br>
-            <b>• Official Weather Reference:</b> <a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank">Google Weather Dhaka</a> (`wttr.in` Live Stream).
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    st.info("✓ Automated real-time sensor & meteorological ingestion enabled. Zero hardcoded defaults.")
+    st.markdown("### Research scope")
+    st.markdown(
+        """
+**Location:** Dhaka, Bangladesh only  
+`23.8103° N, 90.4125° E`
+
+**Dataset variables (all 5):**
+1. PM2.5  
+2. Temperature  
+3. Relative humidity  
+4. Wind speed  
+5. Rainfall
+"""
+    )
+    st.markdown("### Live sources used by this app")
+    st.markdown(
+        """
+- **PM2.5:** [Open-Meteo current JSON](https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka)  
+- **Weather:** [weather.com Dhaka](https://weather.com/weather/today/l/23.81,90.41?unit=m) (The Weather Channel — the same provider behind Google Weather)
+"""
+    )
+    google_key = st.text_input(
+        "Optional: Google Weather API key",
+        type="password",
+        help="If you have a Google Cloud Weather API key, the app will fetch official Google current conditions so the Google Weather card can match exactly.",
+    )
+    st.caption("Key না থাকলে Weather Channel API ব্যবহার হবে। Google সার্চ কার্ডের সাথে ১–২ ইউনিট ফারাক থাকতে পারে — সেটা ডিফল্ট ভ্যালু না।")
 
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📡 System 1: অটোমেটিক লাইভ ডেটা (Dhaka, Bangladesh) -> ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন",
-    "🎛️ System 2: ম্যানুয়াল ইনপুট দিয়ে যেকোনো দিনের ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন",
-    "📂 System 3: Upload Custom CSV Data (বাল্ক প্রেডিকশন)",
-    "📜 System 4: Paper & Method Citing Guide (থিসিস সাইটেশন)"
-])
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "📡 System 1: লাইভ ঢাকা ডেটা → ২৪ ঘন্টা পরের PM2.5",
+        "🎛️ System 2: ম্যানুয়াল ইনপুট → ২৪ ঘন্টা পরের PM2.5",
+        "📂 System 3: CSV আপলোড",
+        "📜 System 4: Citation",
+    ]
+)
 
-# ── SYSTEM 1: AUTOMATED LIVE LOCATION DETECTION & GOOGLE WEATHER FORECAST ──────
+
 with tab1:
-    st.markdown("### 📡 System 1: অটোমেটিক লাইভ ডেটা ও ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (Dhaka, Bangladesh)")
-    
-    st.markdown("""
-    <div style="background:#e8f5e9; padding:15px; border-radius:8px; border-left:6px solid #2CA02C; margin-bottom:20px;">
-        <h3 style="margin-top:0px; margin-bottom:6px; color:#2CA02C;">📍 গবেষণার লোকেশন: <strong>Dhaka, Bangladesh (23.8103° N, 90.4125° E)</strong></h3>
-        <p style="margin-bottom:0px; font-size:1.05em; color:#212121;">
-            <b>✓ ৫টি ভেরিয়েবল ইনজেশন (5 Meteorological & PM2.5 Variables):</b> আপনার ডাটাসেটের ৫টি ভেরিয়েবল (PM2.5, তাপমাত্রা, আর্দ্রতা, বাতাসের গতি ও বৃষ্টিপাত) সরাসরি লাইভ API থেকে লোড করা হয়।<br>
-            <b>✓ অটোমেটিক ২৪ ঘন্টা পরের প্রেডিকশন:</b> নিচের বাটনে ক্লিক করলে ঢাকার লাইভ ডেটা থেকে ঠিক ২৪ ঘন্টা পরের PM2.5 ভ্যালু প্রেডিক্ট করে দেখাবে!
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Single Reference Link Box (Only official reference URLs as requested!)
-    st.markdown("""
-    <div class="source-box">
-        <h3 style="margin-top:0px; margin-bottom:8px; color:#185FA5;">🔗 লাইভ ডেটা সোর্স রেফারেন্স লিংক (অফিশিয়াল ভেরিফাইড সোর্স):</h3>
-        <p style="margin-bottom:4px;">অ্যাপে দেখানো ভ্যালু এবং ওয়েবসাইটের ভ্যালু ভেরিফাই করার জন্য নিচের অফিশিয়াল রেফারেন্স লিংকগুলোতে ক্লিক করুন:</p>
-        <ul style="margin-bottom:0px;">
-            <li><b>1. AQI.in Official Dhaka Air Quality Network (PM2.5 Reference):</b> <a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank">https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm</a></li>
-            <li><b>2. Google Weather Dhaka Live Search (Temp, Humidity, Wind, Rain):</b> <a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank">https://www.google.com/search?q=weather+in+dhaka</a> <i>(`wttr.in/Dhaka?format=j1` Live API)</i></li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown("### System 1 — Automatic live Dhaka fetch + 24-hour-ahead prediction")
+    st.markdown(
+        """
+<div class="source-box">
+<b>ভেরিফাই রুল:</b> অ্যাপে যে নম্বর দেখাবে, পাশের লিংকটাও <i>সেই একই সোর্স</i>।
+অন্য ওয়েবসাইটের সাথে জোর করে মিলানো হয় না — তাই লিংক খুললে একই ভ্যালু পাবে।<br><br>
+<b>PM2.5 সোর্স:</b> Open-Meteo <i>current</i> hour
+&nbsp;·&nbsp; <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank">JSON খুলুন</a><br>
+<b>আবহাওয়া সোর্স:</b> The Weather Channel / weather.com
+&nbsp;·&nbsp; <a href="https://weather.com/weather/today/l/23.81,90.41?unit=m" target="_blank">weather.com Dhaka</a>
+&nbsp;·&nbsp; <a href="https://www.google.com/search?q=weather+in+dhaka&hl=en" target="_blank">Google Weather card</a> (তুলনা; ১–২ ইউনিট ফারাক নরমাল)
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+<div class="note-box">
+<b>আগের বাগ (এটাই ১২ আটকে থাকার কারণ):</b> অ্যাপ Open-Meteo-এর <i>শেষ ফোরকাস্ট আওয়ার</i> নিচ্ছিল
+(আজ রাত ২১–২৩টা ≈ ১২ µg/m³), <i>এখনকার ঘণ্টা</i> না। ডিফল্ট/হার্ডকোড ছিল না।
+এখন শুধু current hour কাটা হয়।
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
     if st.button("🔄 ঢাকার লাইভ ডেটা ফেচ করুন এবং ২৪ ঘন্টা পরের PM2.5 প্রেডিক্ট করুন", type="primary"):
-        with st.spinner("Fetching real-time Dhaka readings & executing Hybrid Ridge-Residual Champion Model..."):
-            try:
-                df_live = fetch_live_dhaka_data()
-                curr_pm   = float(df_live['pm25'].iloc[-1])
-                curr_temp = float(df_live['temperature'].iloc[-1])
-                curr_hum  = float(df_live['humidity'].iloc[-1])
-                curr_wind = float(df_live['wind_speed'].iloc[-1])
-                curr_rain = float(df_live['rainfall'].iloc[-1])
-                latest_dt = str(df_live['datetime'].iloc[-1])
-                
-                df_feat = engineer_live_features(df_live, artifact['feature_cols'])
-                latest_row = df_feat.iloc[-1:]
-                X_live = latest_row[artifact['feature_cols']].values
-                X_live_s = artifact['scaler'].transform(X_live)
-                
-                pred_ridge = artifact['ridge_model'].predict(X_live_s)[0]
-                pred_res   = artifact['residual_tree_model'].predict(X_live)[0]
-                pred_24h   = max(5.0, pred_ridge + pred_res)
-                
-                st.success(f"✓ সফলভাবে **Dhaka, Bangladesh** এর লাইভ ডেটা লোড হয়েছে। টাইমস্ট্যাম্প: **{latest_dt} (Dhaka BST Local Time)**")
-                
-                # ── DISPLAY ALL 5 METRIC CARDS (PM2.5, Temp, Humidity, Wind, Rain) ──
-                c1, c2, c3, c4, c5 = st.columns(5)
-                with c1:
-                    st.metric("Current PM2.5 (Dhaka)", f"{curr_pm:.1f} µg/m³")
-                    st.markdown('<a href="https://www.aqi.in/dashboard/bangladesh/dhaka-division/dhaka/pm" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify AQI.in Live 🔗]</a>', unsafe_allow_html=True)
-                with c2:
-                    st.metric("Current Temp", f"{curr_temp:.1f} °C")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
-                with c3:
-                    st.metric("Relative Humidity", f"{curr_hum:.0f} %")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
-                with c4:
-                    st.metric("Wind Speed", f"{curr_wind:.1f} km/h")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
-                with c5:
-                    st.metric("Rainfall", f"{curr_rain:.1f} mm")
-                    st.markdown('<a href="https://www.google.com/search?q=weather+in+dhaka" target="_blank" style="font-size:0.85em; color:#185FA5; text-decoration:none;">[Verify Google Weather 🔗]</a>', unsafe_allow_html=True)
-                    
-                st.markdown("---")
-                st.subheader("🔮 ঠিক ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন (24-Hour Ahead Daily Average Forecast)")
-                
-                band_name, css_class, band_desc = get_aqi_band_info(pred_24h)
-                st.markdown(f"""
-                <div class="{css_class}">
-                    <h2 style="margin:0px;">২৪ ঘন্টা পরের প্রেডিক্টেড PM2.5: <strong>{pred_24h:.1f} µg/m³</strong></h2>
-                    <h3 style="margin-top:5px; margin-bottom:10px;">AQI Severity Band: <strong>{band_name}</strong></h3>
-                    <p style="margin:0px;">{band_desc}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("#### Scientific Breakdown of Your 24-Hour Ahead Forecast:")
-                st.info(f"• **Stage 1 Linear Autoregression (`RidgeCV` Anchor):** Projected baseline = `{pred_ridge:.1f} µg/m³` (based on continuous 24h momentum, $R^2 = 0.8533$).\n• **Stage 2 Meteorological Correction (`HistGBM Tree Residual`):** Weather adjustment = `{pred_res:+.1f} µg/m³` (Current temperature `{curr_temp:.1f}°C`, humidity `{curr_hum:.0f}%`, wind `{curr_wind:.1f} km/h`, and rainfall `{curr_rain:.1f} mm`).")
-                
-                # ── 7-DAY HISTORICAL TREND & 24H-AHEAD FORECAST CHART ──
-                st.markdown("---")
-                st.subheader("📊 7-Day Historical PM2.5 Trend & 24-Hour Ahead Forecast Chart")
-                
-                fig, ax = plt.subplots(figsize=(12, 4.5))
-                recent = df_live.iloc[-168:]
-                ax.plot(recent['datetime'], recent['pm25'], color='#185FA5', lw=2, label="Actual Hourly PM2.5 (Dhaka BST)")
-                
-                future_time = recent['datetime'].iloc[-1] + pd.Timedelta(hours=24)
-                ax.plot([recent['datetime'].iloc[-1], future_time],
-                        [recent['pm25'].iloc[-1], pred_24h],
-                        color='#D85A30', linestyle='--', lw=2.5, marker='o', label=f"24h-Ahead Forecast ({pred_24h:.1f} µg/m³)")
-                
-                ax.axhline(50, color='#2CA02C', linestyle=':', alpha=0.7, label="Good Limit (50)")
-                ax.axhline(100, color='#FFC107', linestyle=':', alpha=0.7, label="Moderate Limit (100)")
-                ax.axhline(150, color='#F44336', linestyle=':', alpha=0.7, label="Unhealthy Limit (150)")
-                
-                ax.set_title("Dhaka Real-Time PM2.5 & 24h-Ahead Forecast (Asia/Dhaka Local Time)", fontweight='bold')
-                ax.set_xlabel("Date/Time (BST)"); ax.set_ylabel("PM2.5 Concentration (µg/m³)")
-                ax.grid(True, linestyle='--', alpha=0.5)
-                ax.legend(loc="upper left")
-                plt.tight_layout()
-                st.pyplot(fig)
-                
-            except Exception as e:
-                st.error(f"Error executing forecast: {str(e)}")
+        if artifact is None:
+            st.error("Model failed to load.")
+        else:
+            with st.spinner("Fetching live Dhaka observations and running the 24h-ahead model..."):
+                try:
+                    df_live, meta = fetch_live_dhaka_data(google_key)
+                    df_feat = engineer_live_features(df_live, artifact["feature_cols"])
+                    pred_24h, pred_ridge, pred_res = predict_24h(df_feat, artifact)
+                    bt = backtest_last_7_days(df_live, artifact)
+
+                    curr_pm = float(df_live["pm25"].iloc[-1])
+                    curr_temp = float(df_live["temperature"].iloc[-1])
+                    curr_hum = float(df_live["humidity"].iloc[-1])
+                    curr_wind = float(df_live["wind_speed"].iloc[-1])
+                    curr_rain = float(df_live["rainfall"].iloc[-1])
+                    latest_dt = str(df_live["datetime"].iloc[-1])
+
+                    st.success(
+                        f"Live fetch OK · Dhaka · local clock {meta['fetched_at']} BST · "
+                        f"series last hour {latest_dt}"
+                    )
+                    if meta["weather_error"]:
+                        st.warning(meta["weather_error"])
+
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    with c1:
+                        metric_with_source(
+                            "Current PM2.5",
+                            f"{curr_pm:.1f}",
+                            "µg/m³",
+                            meta["pm"]["source_name"],
+                            meta["pm"]["time"],
+                            meta["pm"]["verify_url"],
+                        )
+                    with c2:
+                        metric_with_source(
+                            "Temperature",
+                            f"{curr_temp:.1f}",
+                            "°C",
+                            meta["weather"]["source_name"],
+                            meta["weather"].get("time", ""),
+                            meta["weather"]["verify_url"],
+                        )
+                    with c3:
+                        metric_with_source(
+                            "Relative Humidity",
+                            f"{curr_hum:.0f}",
+                            "%",
+                            meta["weather"]["source_name"],
+                            meta["weather"].get("time", ""),
+                            meta["weather"]["verify_url"],
+                        )
+                    with c4:
+                        metric_with_source(
+                            "Wind Speed",
+                            f"{curr_wind:.1f}",
+                            "km/h",
+                            meta["weather"]["source_name"],
+                            meta["weather"].get("time", ""),
+                            meta["weather"]["verify_url"],
+                        )
+                    with c5:
+                        metric_with_source(
+                            "Rainfall (1h)",
+                            f"{curr_rain:.1f}",
+                            "mm",
+                            meta["weather"]["source_name"] + " — millimetres, not Google’s rain %",
+                            meta["weather"].get("time", ""),
+                            meta["weather"]["verify_url"],
+                        )
+
+                    omw = meta["open_meteo_weather"]
+                    with st.expander("Live readout from both weather APIs (proof these are not defaults)"):
+                        st.write(
+                            {
+                                "display_source": meta["weather"]["source_name"],
+                                "display": {
+                                    "temp_C": curr_temp,
+                                    "humidity_pct": curr_hum,
+                                    "wind_kmh": curr_wind,
+                                    "rain_mm": curr_rain,
+                                    "time": meta["weather"].get("time", ""),
+                                },
+                                "open_meteo_current_same_moment": {
+                                    "temp_C": omw["temperature"],
+                                    "humidity_pct": omw["humidity"],
+                                    "wind_kmh": omw["wind_speed"],
+                                    "rain_mm": omw["rainfall"],
+                                    "time": omw["time"],
+                                },
+                                "open_meteo_pm25_current": {
+                                    "pm25": curr_pm,
+                                    "time": meta["pm"]["time"],
+                                },
+                            }
+                        )
+                        st.caption(
+                            "দুই API-এর নম্বর আলাদা হবে — তাই বোঝা যায় হার্ডকোড না। "
+                            "ডিসপ্লেতে যে সোর্স লেখা, ভেরিফাই লিংকও সেই সোর্স।"
+                        )
+
+                    st.markdown("---")
+                    st.subheader("ঠিক ২৪ ঘন্টা পরের PM2.5 (next-24h average)")
+                    band_name, css_class, band_desc = get_aqi_band_info(pred_24h)
+                    st.markdown(
+                        f"""
+<div class="{css_class}">
+  <h2 style="margin:0;">Predicted PM2.5: <strong>{pred_24h:.1f} µg/m³</strong></h2>
+  <h3 style="margin-top:6px; margin-bottom:8px;">AQI band: <strong>{band_name}</strong></h3>
+  <p style="margin:0;">{band_desc}</p>
+</div>
+""",
+                        unsafe_allow_html=True,
+                    )
+                    st.info(
+                        f"Ridge baseline `{pred_ridge:.1f}` + weather residual `{pred_res:+.1f}` "
+                        f"= `{pred_24h:.1f}` µg/m³. "
+                        f"Inputs: {curr_temp:.1f}°C, {curr_hum:.0f}%, {curr_wind:.1f} km/h, {curr_rain:.1f} mm."
+                    )
+
+                    st.markdown("---")
+                    st.subheader("৭ দিনের চার্ট")
+
+                    fig, axes = plt.subplots(2, 1, figsize=(12, 7.4), sharex=False)
+                    recent = df_live.iloc[-168:]
+                    axes[0].plot(recent["datetime"], recent["pm25"], color="#185FA5", lw=2.0, label="Observed hourly PM2.5")
+                    future_time = recent["datetime"].iloc[-1] + pd.Timedelta(hours=24)
+                    axes[0].plot(
+                        [recent["datetime"].iloc[-1], future_time],
+                        [recent["pm25"].iloc[-1], pred_24h],
+                        color="#D85A30",
+                        ls="--",
+                        lw=2.2,
+                        marker="o",
+                        label=f"24h-ahead now ({pred_24h:.1f})",
+                    )
+                    axes[0].axhline(50, color="#2CA02C", ls=":", alpha=0.7, label="Good 50")
+                    axes[0].axhline(100, color="#FFC107", ls=":", alpha=0.7, label="Moderate 100")
+                    axes[0].set_title("Last 7 days — observed PM2.5 (Open-Meteo hourly, Dhaka local time)")
+                    axes[0].set_ylabel("PM2.5 (µg/m³)")
+                    axes[0].grid(True, ls="--", alpha=0.45)
+                    axes[0].legend(loc="upper left", fontsize=8)
+
+                    if not bt.empty:
+                        axes[1].plot(bt["datetime"], bt["actual_24h_mean"], color="#2CA02C", lw=2.0, label="Actual next-24h mean")
+                        axes[1].plot(
+                            bt["datetime"],
+                            bt["predicted_24h_mean"],
+                            color="#D85A30",
+                            lw=2.0,
+                            ls="--",
+                            label="Model 24h-ahead prediction",
+                        )
+                        mae = float(np.mean(np.abs(bt["predicted_24h_mean"] - bt["actual_24h_mean"])))
+                        axes[1].set_title(f"Last 7 days — 24h-ahead prediction vs actual next-24h mean   (MAE {mae:.1f} µg/m³)")
+                        axes[1].set_ylabel("PM2.5 (µg/m³)")
+                        axes[1].grid(True, ls="--", alpha=0.45)
+                        axes[1].legend(loc="upper left", fontsize=8)
+                    else:
+                        axes[1].text(0.5, 0.5, "Not enough completed 24h windows yet.", ha="center", va="center")
+                        axes[1].set_axis_off()
+
+                    axes[1].set_xlabel("Date/time (Asia/Dhaka)")
+                    fig.tight_layout()
+                    st.pyplot(fig)
+
+                    if not bt.empty:
+                        daily = bt.copy()
+                        daily["day"] = pd.to_datetime(daily["datetime"]).dt.date
+                        daily_tbl = (
+                            daily.groupby("day", as_index=False)
+                            .agg(
+                                predicted=("predicted_24h_mean", "mean"),
+                                actual=("actual_24h_mean", "mean"),
+                            )
+                            .rename(columns={"day": "Date", "predicted": "Predicted 24h-mean", "actual": "Actual 24h-mean"})
+                        )
+                        daily_tbl["Abs. error"] = (daily_tbl["Predicted 24h-mean"] - daily_tbl["Actual 24h-mean"]).abs()
+                        st.markdown("#### Last 7 days — daily average of the hourly 24h-ahead pairs")
+                        st.dataframe(
+                            daily_tbl.style.format(
+                                {
+                                    "Predicted 24h-mean": "{:.1f}",
+                                    "Actual 24h-mean": "{:.1f}",
+                                    "Abs. error": "{:.1f}",
+                                }
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                        st.caption(
+                            "এই টেবিল/চার্ট Open-Meteo-এর গত ৭ দিনের hourly সিরিজ দিয়ে মডেলকে পেছন থেকে চালিয়ে বানানো। "
+                            "কোনো হাতে-লেখা সাকসেস স্কোর নাই।"
+                        )
+
+                except Exception as exc:
+                    st.error(f"Live fetch / forecast failed: {exc}")
+
 
 with tab2:
-    st.markdown("### 🎛️ System 2: ম্যানুয়াল ইনপুট দিয়ে যেকোনো দিনের ২৪ ঘন্টা পরের PM2.5 প্রেডিকশন")
-    st.write("আপনি যেকোনো দিনের তারিখ, ঐ দিনের PM2.5 এবং আবহাওয়া (তাপমাত্রা, আর্দ্রতা, বাতাস, বৃষ্টি) ইনপুট দিলে আমাদের **Hybrid Ridge-Residual Champion Model** ($R^2 = 0.8650$) ঠিক তার পরবর্তী ২৪ ঘন্টা পর PM2.5 এর ভ্যালু কত হবে তা প্রেডিক্ট করে জানাবে।")
-    
+    st.markdown("### System 2 — Manual any-day input")
+    st.write(
+        "একটা দিনের ৫টা ভেরিয়েবল দিলে মডেল ঠিক তার পরের ২৪ ঘন্টার গড় PM2.5 প্রেডিক্ট করবে। "
+        "নিচের নম্বরগুলো শুধু ফর্মের স্টার্টিং ভ্যালু — লাইভ রিডিং না।"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
-        man_date       = st.date_input("যেকোনো তারিখ সিলেক্ট করুন (Date)", value=datetime.date.today())
-        man_pm25       = st.number_input("ঐ দিনের PM2.5 Concentration (µg/m³)", value=110.0, step=5.0)
-        man_pm25_lag24 = st.number_input("তার আগের দিনের (২৪ ঘন্টা আগের) PM2.5 (µg/m³)", value=95.0, step=5.0)
-        man_temp       = st.number_input("তাপমাত্রা / Temperature (°C)", value=27.0, step=0.5)
+        man_date = st.date_input("Date", value=datetime.date.today())
+        man_pm25 = st.number_input("PM2.5 (µg/m³)", value=25.0, step=1.0)
+        man_pm25_lag24 = st.number_input("PM2.5 24h earlier (µg/m³)", value=22.0, step=1.0)
+        man_temp = st.number_input("Temperature (°C)", value=30.0, step=0.5)
     with col_b:
-        man_hum        = st.number_input("আর্দ্রতা / Relative Humidity (%)", value=75.0, step=2.0)
-        man_wind       = st.number_input("বাতাসের গতি / Wind Speed (km/h)", value=8.0, step=1.0)
-        man_rain       = st.number_input("২৪ ঘন্টার বৃষ্টিপাত / Rainfall (mm)", value=0.0, step=1.0)
-        
-    if st.button("🚀 ম্যানুয়াল ডেটা থেকে পরবর্তী ২৪ ঘন্টার PM2.5 প্রেডিক্ট করুন", type="primary"):
-        df_sim = pd.DataFrame({
-            'datetime': pd.date_range(end=pd.Timestamp(man_date), periods=240, freq='1h'),
-            'pm25': np.linspace(man_pm25_lag24, man_pm25, 240),
-            'temperature': [man_temp]*240,
-            'humidity': [man_hum]*240,
-            'wind_speed': [man_wind]*240,
-            'rainfall': [0.0]*239 + [man_rain]
-        })
-        
-        df_sim_feat = engineer_live_features(df_sim, artifact['feature_cols'])
-        latest_sim = df_sim_feat.iloc[-1:]
-        X_sim = latest_sim[artifact['feature_cols']].values
-        X_sim_s = artifact['scaler'].transform(X_sim)
-        
-        sim_ridge = artifact['ridge_model'].predict(X_sim_s)[0]
-        sim_res   = artifact['residual_tree_model'].predict(X_sim)[0]
-        sim_pred  = max(5.0, sim_ridge + sim_res)
-        
-        band_name, css_class, band_desc = get_aqi_band_info(sim_pred)
-        st.markdown(f"""
-        <div class="{css_class}">
-            <h2 style="margin:0px;">ঠিক ২৪ ঘন্টা পরের প্রেডিক্টেড PM2.5: <strong>{sim_pred:.1f} µg/m³</strong></h2>
-            <h3 style="margin-top:5px; margin-bottom:10px;">AQI Severity Band: <strong>{band_name}</strong></h3>
-            <p style="margin:0px;">{band_desc}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("#### Scientific Breakdown of Manual Prediction:")
-        st.info(f"• **Stage 1 Linear Autoregression (`RidgeCV` Anchor):** Projected baseline = `{sim_ridge:.1f} µg/m³` (based on continuous 24h momentum, $R^2 = 0.8533$).\n• **Stage 2 Meteorological Correction (`HistGBM Tree Residual`):** Weather adjustment = `{sim_res:+.1f} µg/m³` (Rainfall washout and wind dispersion lower the forecast, while stagnation increases it).")
+        man_hum = st.number_input("Relative humidity (%)", value=80.0, step=1.0)
+        man_wind = st.number_input("Wind speed (km/h)", value=15.0, step=0.5)
+        man_rain = st.number_input("Rainfall (mm)", value=0.0, step=0.1)
+
+    if st.button("🚀 ম্যানুয়াল ডেটা থেকে ২৪ ঘন্টা পরের PM2.5 প্রেডিক্ট করুন", type="primary"):
+        if artifact is None:
+            st.error("Model failed to load.")
+        else:
+            df_sim = pd.DataFrame(
+                {
+                    "datetime": pd.date_range(end=pd.Timestamp(man_date) + pd.Timedelta(hours=23), periods=240, freq="1h"),
+                    "pm25": np.linspace(man_pm25_lag24, man_pm25, 240),
+                    "temperature": [man_temp] * 240,
+                    "humidity": [man_hum] * 240,
+                    "wind_speed": [man_wind] * 240,
+                    "rainfall": [0.0] * 239 + [man_rain],
+                }
+            )
+            df_sim_feat = engineer_live_features(df_sim, artifact["feature_cols"])
+            sim_pred, sim_ridge, sim_res = predict_24h(df_sim_feat, artifact)
+            band_name, css_class, band_desc = get_aqi_band_info(sim_pred)
+            st.markdown(
+                f"""
+<div class="{css_class}">
+  <h2 style="margin:0;">Predicted PM2.5 24h later: <strong>{sim_pred:.1f} µg/m³</strong></h2>
+  <h3 style="margin-top:6px; margin-bottom:8px;">AQI band: <strong>{band_name}</strong></h3>
+  <p style="margin:0;">{band_desc}</p>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+            st.info(f"Ridge `{sim_ridge:.1f}` + residual `{sim_res:+.1f}` = `{sim_pred:.1f}` µg/m³.")
+
 
 with tab3:
-    st.markdown("### 📂 System 3: Upload Custom CSV Data (বাল্ক প্রেডিকশন)")
-    st.write("Upload a CSV file containing columns: `datetime`, `pm25`, `temperature`, `humidity`, `wind_speed`, `rainfall`.")
-    
-    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
-    if uploaded_file is not None:
+    st.markdown("### System 3 — Bulk CSV")
+    st.write("Required columns: `datetime`, `pm25`, `temperature`, `humidity`, `wind_speed`, `rainfall`.")
+    uploaded_file = st.file_uploader("CSV file", type=["csv"])
+    if uploaded_file is not None and artifact is not None:
         df_custom = pd.read_csv(uploaded_file)
-        df_custom['datetime'] = pd.to_datetime(df_custom['datetime'])
-        st.write("Preview of uploaded data:", df_custom.head())
-        
-        if st.button("🚀 Run Bulk Forecast on Custom Data"):
-            df_cust_feat = engineer_live_features(df_custom, artifact['feature_cols'])
-            X_cust = df_cust_feat[artifact['feature_cols']].values
-            X_cust_s = artifact['scaler'].transform(X_cust)
-            
-            p_cust_ridge = artifact['ridge_model'].predict(X_cust_s)
-            p_cust_res   = artifact['residual_tree_model'].predict(X_cust)
-            p_cust_24h   = np.maximum(5.0, p_cust_ridge + p_cust_res)
-            
-            df_custom['predicted_pm25_24h_avg'] = p_cust_24h
-            st.success("✓ Bulk forecasting complete!")
-            st.dataframe(df_custom[['datetime', 'pm25', 'predicted_pm25_24h_avg']].tail(20))
-            
-            csv_data = df_custom.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Predictions CSV", data=csv_data, file_name="custom_dhaka_pm25_forecasts.csv", mime="text/csv")
+        df_custom["datetime"] = pd.to_datetime(df_custom["datetime"])
+        st.write(df_custom.head())
+        if st.button("🚀 Run bulk 24h-ahead forecast"):
+            df_cust_feat = engineer_live_features(df_custom, artifact["feature_cols"])
+            X_cust = df_cust_feat[artifact["feature_cols"]].values
+            X_cust_s = artifact["scaler"].transform(X_cust)
+            p_cust = np.maximum(
+                5.0,
+                artifact["ridge_model"].predict(X_cust_s) + artifact["residual_tree_model"].predict(X_cust),
+            )
+            df_custom["predicted_pm25_24h_avg"] = p_cust
+            st.dataframe(df_custom[["datetime", "pm25", "predicted_pm25_24h_avg"]].tail(20))
+            st.download_button(
+                "Download predictions CSV",
+                data=df_custom.to_csv(index=False).encode("utf-8"),
+                file_name="custom_dhaka_pm25_forecasts.csv",
+                mime="text/csv",
+            )
+
 
 with tab4:
-    st.markdown("### 📜 System 4: Research Paper Citing & Technical Documentation")
-    st.write("This interactive web interface is powered by the **Hybrid Ridge-Residual Boosting Architecture** ($R^2 = 0.8650$), developed for your academic thesis.")
-    
-    st.code("""
-@article{DhakaPM25Forecast2026,
+    st.markdown("### Citation")
+    st.code(
+        """@article{DhakaPM25Forecast2026,
   title={Multivariate 24-Hour Ahead Daily-Average PM2.5 Forecasting in Dhaka Using Hybrid Ridge-Residual Gradient Boosting},
-  author={Your Name and Collaborators},
+  author={Talukder, Meherab Hossain and Collaborators},
   journal={Journal of Environmental Management / Atmospheric Environment},
   year={2026},
-  note={Live model interface deployed at https://your-app-url.streamlit.app}
-}
-    """, language="bibtex")
+  note={https://github.com/meherabmehu/PM2.5-Air-Quality-Forecasting-for-Dhaka-}
+}""",
+        language="bibtex",
+    )

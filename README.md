@@ -49,7 +49,7 @@ $$\hat{y}_{\text{hybrid}}(X) = \hat{y}_{\text{Ridge}}(X) + \hat{y}_{\text{TreeRe
 ### Key Technical Contributions:
 1. **Core 92 Causal Feature Set:** We construct unshifted historical EMAs across multiple spans (`3h, 6h, 12h, 24h, 48h, 72h, 168h`), causal lag vectors up to 1 week, 24-hour rolling momentum differences, trend acceleration, and cumulative precipitation washout features (`rainfall_cum_24h/48h/72h`).
 2. **Zero Data Leakage:** Strictly chronological `70 / 15 / 15` split (`2016–2020` train, `2020–2021` validation, `2021–2022` test), with all feature transformers and imputers fitted solely on the training distribution.
-3. **Automated Live Data Assimilation:** The deployed interface enriches Open-Meteo's hourly Copernicus Air Quality grid with real-time live meteorological observations from **`wttr.in/Dhaka`** (Google Weather equivalent), displaying timestamps in **Bangladesh Standard Time (BST / UTC+6)**.
+3. **Automated Live Data Assimilation:** The deployed interface uses Open-Meteo’s *current* PM2.5 hour (never a future forecast hour) plus The Weather Channel / weather.com current observations for temperature, humidity, wind and rainfall. Verify links open the same source the app just fetched. Timestamps are Bangladesh Standard Time (BST / UTC+6).
 
 ---
 
