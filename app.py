@@ -276,24 +276,6 @@ def fetch_google_weather(api_key):
     }
 
 
-def fetch_weather_channel():
-    url = (
-        "https://api.weather.com/v3/wx/observations/current"
-        f"?geocode={DHAKA_LAT},{DHAKA_LON}&units=m&language=en-US&format=json&apiKey={TWC_KEY}"
-    )
-    data = http_json(url, timeout=15)
-    return {
-        "temperature": float(data["temperature"]),
-        "humidity": float(data["relativeHumidity"]),
-        "wind_speed": float(data["windSpeed"]),
-        "rainfall": float(data.get("precip1Hour") or 0.0),
-        "rain_chance_pct": None,
-        "time": data.get("validTimeLocal") or "",
-        "source_name": "weather.com Today — Dhaka",
-        "verify_url": WEATHERCOM_TODAY_PAGE,
-    }
-
-
 def fetch_weather_com_pm25():
     url = (
         "https://api.weather.com/v3/wx/globalAirQuality"
@@ -416,15 +398,7 @@ def render_live_panel(google_key, nonce):
         return
     try:
         df_live, meta = cached_live_fetch(google_key, nonce)
-        df_feat = engineer_live_features(df_live, artifact["feature_cols"])
-        pred_24h, pred_ridge, pred_res = predict_24h(df_feat, artifact)
-        bt = backtest_last_7_days(df_live, artifact)
-
         curr_pm = float(df_live["pm25"].iloc[-1])
-        curr_temp = float(df_live["temperature"].iloc[-1])
-        curr_hum = float(df_live["humidity"].iloc[-1])
-        curr_wind = float(df_live["wind_speed"].iloc[-1])
-        curr_rain = float(df_live["rainfall"].iloc[-1])
 
         st.caption(f"Live fetch · {meta['fetched_at']} BST · not a default value")
         if meta["weather_error"]:
@@ -440,6 +414,36 @@ def render_live_panel(google_key, nonce):
                 meta["pm"]["time"],
                 meta["pm"]["verify_url"],
             )
+
+        if not meta.get("google_ok"):
+            with c2:
+                st.metric("Temperature", "—")
+            with c3:
+                st.metric("Relative Humidity", "—")
+            with c4:
+                st.metric("Wind Speed", "—")
+            with c5:
+                st.metric("Rainfall (1h)", "—")
+            if meta["pm"].get("aqi") is not None:
+                st.caption(
+                    f"weather.com large number is AQI {meta['pm']['aqi']} ({meta['pm'].get('category','')}). "
+                    f"Match the PM2.5 µg/m³ line: {curr_pm:.1f}."
+                )
+            st.info(
+                "Paste a Google Weather API key in the sidebar. "
+                "Weather and the 24h forecast run only after that key fetches successfully. "
+                f"Demo key: {GOOGLE_DEMO_KEY_PAGE}"
+            )
+            return
+
+        curr_temp = float(df_live["temperature"].iloc[-1])
+        curr_hum = float(df_live["humidity"].iloc[-1])
+        curr_wind = float(df_live["wind_speed"].iloc[-1])
+        curr_rain = float(df_live["rainfall"].iloc[-1])
+        df_feat = engineer_live_features(df_live, artifact["feature_cols"])
+        pred_24h, pred_ridge, pred_res = predict_24h(df_feat, artifact)
+        bt = backtest_last_7_days(df_live, artifact)
+
         with c2:
             metric_with_source(
                 "Temperature",
@@ -486,8 +490,6 @@ def render_live_panel(google_key, nonce):
                 f"weather.com large number is AQI {meta['pm']['aqi']} ({meta['pm'].get('category','')}). "
                 f"Match the PM2.5 µg/m³ line: {curr_pm:.1f}."
             )
-        if not meta.get("google_ok"):
-            st.info(f"No Google key — weather from weather.com Today. Key: {GOOGLE_DEMO_KEY_PAGE}")
 
         st.subheader("Predicted next-24h mean PM2.5")
         band_name, css_class, band_desc = get_aqi_band_info(pred_24h)
