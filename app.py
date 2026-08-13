@@ -398,12 +398,20 @@ def render_live_panel(google_key, nonce):
         return
     try:
         df_live, meta = cached_live_fetch(google_key, nonce)
+        if meta["weather_error"] or not meta.get("google_ok"):
+            st.error(meta["weather_error"] or "Google Weather fetch failed. Check the API key and try again.")
+            return
+
         curr_pm = float(df_live["pm25"].iloc[-1])
+        curr_temp = float(df_live["temperature"].iloc[-1])
+        curr_hum = float(df_live["humidity"].iloc[-1])
+        curr_wind = float(df_live["wind_speed"].iloc[-1])
+        curr_rain = float(df_live["rainfall"].iloc[-1])
+        df_feat = engineer_live_features(df_live, artifact["feature_cols"])
+        pred_24h, pred_ridge, pred_res = predict_24h(df_feat, artifact)
+        bt = backtest_last_7_days(df_live, artifact)
 
         st.caption(f"Live fetch · {meta['fetched_at']} BST · not a default value")
-        if meta["weather_error"]:
-            st.warning(meta["weather_error"])
-
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             metric_with_source(
@@ -414,36 +422,6 @@ def render_live_panel(google_key, nonce):
                 meta["pm"]["time"],
                 meta["pm"]["verify_url"],
             )
-
-        if not meta.get("google_ok"):
-            with c2:
-                st.metric("Temperature", "—")
-            with c3:
-                st.metric("Relative Humidity", "—")
-            with c4:
-                st.metric("Wind Speed", "—")
-            with c5:
-                st.metric("Rainfall (1h)", "—")
-            if meta["pm"].get("aqi") is not None:
-                st.caption(
-                    f"weather.com large number is AQI {meta['pm']['aqi']} ({meta['pm'].get('category','')}). "
-                    f"Match the PM2.5 µg/m³ line: {curr_pm:.1f}."
-                )
-            st.info(
-                "Paste a Google Weather API key in the sidebar. "
-                "Weather and the 24h forecast run only after that key fetches successfully. "
-                f"Demo key: {GOOGLE_DEMO_KEY_PAGE}"
-            )
-            return
-
-        curr_temp = float(df_live["temperature"].iloc[-1])
-        curr_hum = float(df_live["humidity"].iloc[-1])
-        curr_wind = float(df_live["wind_speed"].iloc[-1])
-        curr_rain = float(df_live["rainfall"].iloc[-1])
-        df_feat = engineer_live_features(df_live, artifact["feature_cols"])
-        pred_24h, pred_ridge, pred_res = predict_24h(df_feat, artifact)
-        bt = backtest_last_7_days(df_live, artifact)
-
         with c2:
             metric_with_source(
                 "Temperature",
@@ -493,16 +471,26 @@ def render_live_panel(google_key, nonce):
 
         st.subheader("Predicted next-24h mean PM2.5")
         band_name, css_class, band_desc = get_aqi_band_info(pred_24h)
+        metrics = artifact.get("metrics") or {}
+        mae_m = float(metrics.get("MAE", 15.72))
+        rmse_m = float(metrics.get("RMSE", 22.03))
+        r2_m = float(metrics.get("R2", 0.8605))
+        lo = max(5.0, pred_24h - mae_m)
+        hi = pred_24h + mae_m
         st.markdown(
             f"""
 <div class="{css_class}">
   <h2 style="margin:0;">{pred_24h:.1f} µg/m³</h2>
-  <p style="margin:6px 0 0 0;">{band_name} · {band_desc}</p>
+  <p style="margin:6px 0 0 0;">{band_name} · typical range {lo:.1f}–{hi:.1f} µg/m³ (±MAE)</p>
 </div>
 """,
             unsafe_allow_html=True,
         )
-        st.caption(f"Ridge {pred_ridge:.1f} + residual {pred_res:+.1f} = {pred_24h:.1f} µg/m³")
+        st.caption(
+            f"Thesis hybrid (Ridge + residual HistGBM) · "
+            f"Ridge {pred_ridge:.1f} + residual {pred_res:+.1f} = {pred_24h:.1f}. "
+            f"Held-out test 2021–22: R² {r2_m:.2f}, MAE {mae_m:.1f} µg/m³, RMSE {rmse_m:.1f} µg/m³."
+        )
 
         st.subheader("Last 7 days")
         fig, axes = plt.subplots(2, 1, figsize=(12, 7.0), sharex=False)
@@ -580,21 +568,16 @@ with st.sidebar:
 - Weather: [Google Weather]({GOOGLE_WEATHER_PAGE})
 """
     )
-    default_key = os.environ.get("GOOGLE_WEATHER_API_KEY", "") or _secret_google_key()
-    google_key = st.text_input(
-        "Google Weather API key",
-        value=default_key,
-        type="password",
-        help="Paste the key, then click Fetch on the main page.",
-    )
-    st.caption(f"Free demo key: {GOOGLE_DEMO_KEY_PAGE}")
+    st.caption(f"Demo key: {GOOGLE_DEMO_KEY_PAGE}")
     auto_refresh = st.checkbox("Auto-refresh every 2 minutes after first fetch", value=True)
 
 
 if "live_nonce" not in st.session_state:
     st.session_state["live_nonce"] = 0
-if "run_google" not in st.session_state:
-    st.session_state["run_google"] = False
+if "run_live" not in st.session_state:
+    st.session_state["run_live"] = False
+if "saved_google_key" not in st.session_state:
+    st.session_state["saved_google_key"] = ""
 
 tab1, tab2, tab3, tab4 = st.tabs(
     [
@@ -618,42 +601,53 @@ with tab1:
         unsafe_allow_html=True,
     )
 
-    has_key = bool((google_key or "").strip())
-    b1, b2, _ = st.columns([2, 1, 2])
-    with b1:
-        fetch_clicked = st.button(
-            "Fetch Google Weather & Predict",
-            type="primary",
-            disabled=not has_key,
+    default_key = (
+        st.session_state.get("saved_google_key")
+        or os.environ.get("GOOGLE_WEATHER_API_KEY", "")
+        or _secret_google_key()
+    )
+    with st.form("live_fetch_form", clear_on_submit=False):
+        google_key = st.text_input(
+            "Google Weather API key",
+            value=default_key,
+            type="password",
+            help="Paste the key, then press Enter or click the button.",
         )
-    with b2:
-        refresh_clicked = st.button("Refresh", disabled=not st.session_state["run_google"])
+        submitted = st.form_submit_button("Fetch all live values & predict", type="primary")
 
-    if fetch_clicked:
-        st.session_state["run_google"] = True
-        st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
-        cached_live_fetch.clear()
-        st.rerun()
-    if refresh_clicked:
-        st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
-        cached_live_fetch.clear()
-        st.rerun()
+    if submitted:
+        key = (google_key or "").strip()
+        if not key:
+            st.session_state["run_live"] = False
+            st.warning("Paste the Google Weather API key, then press Enter.")
+        else:
+            st.session_state["saved_google_key"] = key
+            st.session_state["run_live"] = True
+            st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
+            cached_live_fetch.clear()
+            st.rerun()
 
-    if not has_key:
-        st.session_state["run_google"] = False
+    if st.session_state["run_live"] and st.session_state.get("saved_google_key"):
+        if st.button("Refresh all values"):
+            st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
+            cached_live_fetch.clear()
+            st.rerun()
+        use_key = st.session_state["saved_google_key"]
+        nonce = int(st.session_state["live_nonce"])
+        if auto_refresh and hasattr(st, "fragment"):
 
-    use_key = (google_key or "").strip() if st.session_state["run_google"] else ""
-    nonce = int(st.session_state["live_nonce"])
-    do_auto = bool(auto_refresh and st.session_state["run_google"] and use_key)
-    if do_auto and hasattr(st, "fragment"):
+            @st.fragment(run_every=LIVE_REFRESH)
+            def _auto_live():
+                render_live_panel(use_key, nonce)
 
-        @st.fragment(run_every=LIVE_REFRESH)
-        def _auto_live():
+            _auto_live()
+        else:
             render_live_panel(use_key, nonce)
-
-        _auto_live()
     else:
-        render_live_panel(use_key, nonce)
+        st.caption(
+            "Paste the API key, then press Enter or click the button. "
+            "PM2.5, weather and the forecast all load on that one action."
+        )
 
 
 with tab2:
