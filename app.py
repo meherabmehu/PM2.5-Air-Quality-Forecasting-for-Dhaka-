@@ -585,18 +585,16 @@ with st.sidebar:
         "Google Weather API key",
         value=default_key,
         type="password",
-        help="Needed for the four weather fields to match the Google Weather card.",
+        help="Paste the key, then click Fetch on the main page.",
     )
-    st.caption(f"Free demo key (no card): {GOOGLE_DEMO_KEY_PAGE}")
-    auto_refresh = st.checkbox("Auto-refresh every 2 minutes", value=True)
-    if st.button("Refresh now"):
-        st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
-        cached_live_fetch.clear()
-        st.rerun()
+    st.caption(f"Free demo key: {GOOGLE_DEMO_KEY_PAGE}")
+    auto_refresh = st.checkbox("Auto-refresh every 2 minutes after first fetch", value=True)
 
 
 if "live_nonce" not in st.session_state:
     st.session_state["live_nonce"] = 0
+if "run_google" not in st.session_state:
+    st.session_state["run_google"] = False
 
 tab1, tab2, tab3, tab4 = st.tabs(
     [
@@ -615,22 +613,47 @@ with tab1:
 (use the PM2.5 µg/m³ line; the large number is AQI)<br>
 <b>Temperature / humidity / wind / rain:</b>
 <a href="{GOOGLE_WEATHER_PAGE}" target="_blank">Google Weather — Dhaka</a>
-(requires the sidebar API key)
 </div>
 """,
         unsafe_allow_html=True,
     )
 
+    has_key = bool((google_key or "").strip())
+    b1, b2, _ = st.columns([2, 1, 2])
+    with b1:
+        fetch_clicked = st.button(
+            "Fetch Google Weather & Predict",
+            type="primary",
+            disabled=not has_key,
+        )
+    with b2:
+        refresh_clicked = st.button("Refresh", disabled=not st.session_state["run_google"])
+
+    if fetch_clicked:
+        st.session_state["run_google"] = True
+        st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
+        cached_live_fetch.clear()
+        st.rerun()
+    if refresh_clicked:
+        st.session_state["live_nonce"] = int(st.session_state.get("live_nonce", 0)) + 1
+        cached_live_fetch.clear()
+        st.rerun()
+
+    if not has_key:
+        st.session_state["run_google"] = False
+
+    use_key = (google_key or "").strip() if st.session_state["run_google"] else ""
     nonce = int(st.session_state["live_nonce"])
-    if auto_refresh and hasattr(st, "fragment"):
+    do_auto = bool(auto_refresh and st.session_state["run_google"] and use_key)
+    if do_auto and hasattr(st, "fragment"):
 
         @st.fragment(run_every=LIVE_REFRESH)
         def _auto_live():
-            render_live_panel(google_key, nonce)
+            render_live_panel(use_key, nonce)
 
         _auto_live()
     else:
-        render_live_panel(google_key, nonce)
+        render_live_panel(use_key, nonce)
 
 
 with tab2:
