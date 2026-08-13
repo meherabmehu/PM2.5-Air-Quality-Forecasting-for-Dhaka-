@@ -695,7 +695,12 @@ with tab2:
 """,
                 unsafe_allow_html=True,
             )
-            st.caption(f"Ridge {sim_ridge:.1f} + residual {sim_res:+.1f} = {sim_pred:.1f} µg/m³")
+            m = artifact.get("metrics") or {}
+            mae = float(m.get("MAE", 15.72))
+            st.caption(
+                f"Same thesis hybrid · Ridge {sim_ridge:.1f} + residual {sim_res:+.1f} = {sim_pred:.1f}. "
+                f"Typical test error ±{mae:.1f} µg/m³ (MAE)."
+            )
 
 
 with tab3:
