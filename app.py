@@ -580,12 +580,11 @@ if "run_live" not in st.session_state:
 if "saved_google_key" not in st.session_state:
     st.session_state["saved_google_key"] = ""
 
-tab1, tab2, tab3, tab4 = st.tabs(
+tab1, tab2, tab3 = st.tabs(
     [
         "System 1: Live Dhaka → 24h PM2.5",
         "System 2: Manual input",
         "System 3: CSV upload",
-        "System 4: Citation",
     ]
 )
 
@@ -723,14 +722,4 @@ with tab3:
             )
 
 
-with tab4:
-    st.code(
-        """@article{DhakaPM25Forecast2026,
-  title={Multivariate 24-Hour Ahead Daily-Average PM2.5 Forecasting in Dhaka Using Hybrid Ridge-Residual Gradient Boosting},
-  author={Talukder, Meherab Hossain and Collaborators},
-  journal={Journal of Environmental Management / Atmospheric Environment},
-  year={2026},
-  note={https://github.com/meherabmehu/PM2.5-Air-Quality-Forecasting-for-Dhaka-}
-}""",
-        language="bibtex",
-    )
+
