@@ -49,7 +49,7 @@ $$\hat{y}_{\text{hybrid}}(X) = \hat{y}_{\text{Ridge}}(X) + \hat{y}_{\text{TreeRe
 ### Key Technical Contributions:
 1. **Core 92 Causal Feature Set:** We construct unshifted historical EMAs across multiple spans (`3h, 6h, 12h, 24h, 48h, 72h, 168h`), causal lag vectors up to 1 week, 24-hour rolling momentum differences, trend acceleration, and cumulative precipitation washout features (`rainfall_cum_24h/48h/72h`).
 2. **Zero Data Leakage:** Strictly chronological `70 / 15 / 15` split (`2016–2020` train, `2020–2021` validation, `2021–2022` test), with all feature transformers and imputers fitted solely on the training distribution.
-3. **Automated Live Data Assimilation:** The deployed interface uses Open-Meteo’s *current* PM2.5 hour (never a future forecast hour) plus The Weather Channel / weather.com current observations for temperature, humidity, wind and rainfall. Verify links open the same source the app just fetched. Timestamps are Bangladesh Standard Time (BST / UTC+6).
+3. **Automated Live Data Assimilation:** The live dashboard shows **human websites**, not JSON, as proof. Current PM2.5 comes from the [weather.com Dhaka Air Quality](https://weather.com/forecast/air-quality/l/23.81,90.41) page (µg/m³ line — the big number on that page is AQI, not PM2.5). Temperature, humidity, wind and rainfall come from the official Google Weather API when a key is provided, verified against the [Google Weather card for Dhaka](https://www.google.com/search?q=weather+in+dhaka&hl=en). Without a Google key the four weather fields fall back to [weather.com Today](https://weather.com/weather/today/l/23.81,90.41?unit=m). Hourly history for lags is still Open-Meteo, clipped to the current Dhaka hour. Timestamps are Bangladesh Standard Time (BST / UTC+6).
 
 ---
 

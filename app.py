@@ -14,6 +14,11 @@ BST = timezone(timedelta(hours=6))
 DHAKA_LAT = 23.8103
 DHAKA_LON = 90.4125
 TWC_KEY = "e1f10a1e78da46f5b10a1e78da96f525"
+# Human websites the professor can open — never JSON as "proof"
+WEATHERCOM_AQ_PAGE = "https://weather.com/forecast/air-quality/l/23.81,90.41"
+WEATHERCOM_TODAY_PAGE = "https://weather.com/weather/today/l/23.81,90.41?unit=m"
+GOOGLE_WEATHER_PAGE = "https://www.google.com/search?q=weather+in+dhaka&hl=en"
+GOOGLE_DEMO_KEY_PAGE = "https://developers.google.com/maps/documentation/weather/demo-key"
 
 st.set_page_config(
     page_title="Dhaka PM2.5 — 24h-Ahead Live Forecaster",
@@ -241,6 +246,13 @@ def predict_24h(df_feat, artifact):
     return max(5.0, ridge + resid), ridge, resid
 
 
+def _secret_google_key():
+    try:
+        return str(st.secrets.get("GOOGLE_WEATHER_API_KEY", "") or "")
+    except Exception:
+        return ""
+
+
 def fetch_google_weather(api_key):
     url = (
         "https://weather.googleapis.com/v1/currentConditions:lookup"
@@ -249,16 +261,19 @@ def fetch_google_weather(api_key):
     )
     data = http_json(url, timeout=15)
     wind = data.get("wind", {}).get("speed", {}) or {}
-    rain = (((data.get("precipitation") or {}).get("qpf") or {}).get("quantity"))
+    precip = data.get("precipitation") or {}
+    rain = ((precip.get("qpf") or {}).get("quantity"))
+    rain_pct = (precip.get("probability") or {}).get("percent")
     return {
         "temperature": float(data["temperature"]["degrees"]),
         "humidity": float(data["relativeHumidity"]),
         "wind_speed": float(wind.get("value", 0.0)),
         "rainfall": float(rain or 0.0),
+        "rain_chance_pct": None if rain_pct is None else float(rain_pct),
         "time": data.get("currentTime", ""),
-        "source_name": "Google Weather API (official)",
-        "verify_url": "https://www.google.com/search?q=weather+in+dhaka&hl=en",
-        "api_url": url.split("&key=")[0] + "&key=YOUR_KEY&location.latitude=23.8103&location.longitude=90.4125&unitsSystem=METRIC",
+        "phrase": ((data.get("weatherCondition") or {}).get("description") or {}).get("text", ""),
+        "source_name": "Google Weather — search card for Dhaka",
+        "verify_url": GOOGLE_WEATHER_PAGE,
     }
 
 
@@ -273,34 +288,57 @@ def fetch_weather_channel():
         "humidity": float(data["relativeHumidity"]),
         "wind_speed": float(data["windSpeed"]),
         "rainfall": float(data.get("precip1Hour") or 0.0),
+        "rain_chance_pct": None,
         "time": data.get("validTimeLocal") or "",
         "phrase": data.get("wxPhraseLong") or "",
-        "source_name": "The Weather Channel / weather.com (Google Weather data partner)",
-        "verify_url": "https://weather.com/weather/today/l/23.81,90.41?unit=m",
-        "api_url": url,
+        "source_name": "weather.com Today — Dhaka",
+        "verify_url": WEATHERCOM_TODAY_PAGE,
+    }
+
+
+def fetch_weather_com_pm25():
+    """Current Dhaka PM2.5 from the same feed that powers the weather.com Air Quality page."""
+    url = (
+        "https://api.weather.com/v3/wx/globalAirQuality"
+        f"?geocode={DHAKA_LAT},{DHAKA_LON}&language=en-US&scale=EPA&format=json&apiKey={TWC_KEY}"
+    )
+    data = http_json(url, timeout=15)
+    g = data["globalairquality"]
+    pm = float(g["pollutants"]["PM2.5"]["amount"])
+    exp = g.get("expireTimeGmt")
+    when = ""
+    if exp:
+        when = datetime.datetime.fromtimestamp(int(exp), tz=BST).strftime("%Y-%m-%d %H:%M")
+    return {
+        "value": pm,
+        "aqi": g.get("airQualityIndex"),
+        "category": g.get("airQualityCategory") or "",
+        "primary": g.get("primaryPollutant") or "PM2.5",
+        "time": when,
+        "source_name": "weather.com Air Quality — Dhaka (PM2.5 µg/m³ line, not the big AQI number)",
+        "verify_url": WEATHERCOM_AQ_PAGE,
     }
 
 
 def fetch_live_dhaka_data(google_api_key=""):
     """
-    Hourly history: Open-Meteo (needed for 14-day lags + 7-day backtest).
-    Current display weather: Google Weather API if key given, else Weather Channel.
-    Current PM2.5: Open-Meteo *current* hour — never a future forecast hour.
+    Current PM2.5: weather.com Air Quality page (human website).
+    Current weather: Google Weather if key given, else weather.com Today (human website).
+    14-day hourly history: Open-Meteo, clipped to current Dhaka hour — lags / 7-day replay only.
     """
-    url_aq = (
+    url_hist_aq = (
         "https://air-quality-api.open-meteo.com/v1/air-quality"
         f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}"
-        "&current=pm2_5&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
+        "&hourly=pm2_5&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
     )
-    url_wx = (
+    url_hist_wx = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}"
-        "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,rain"
         "&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,rain"
         "&timezone=Asia%2FDhaka&past_days=14&forecast_days=1"
     )
-    data_aq = http_json(url_aq)
-    data_wx = http_json(url_wx)
+    data_aq = http_json(url_hist_aq)
+    data_wx = http_json(url_hist_wx)
 
     df = pd.DataFrame(
         {
@@ -315,38 +353,27 @@ def fetch_live_dhaka_data(google_api_key=""):
     now = now_dhaka_naive()
     df = df[df["datetime"] <= now.floor("h")].dropna().sort_values("datetime").reset_index(drop=True)
     if df.empty:
-        raise RuntimeError("Open-Meteo returned no observed hours for Dhaka.")
+        raise RuntimeError("No observed hourly history for Dhaka.")
 
-    curr_pm = float(data_aq["current"]["pm2_5"])
-    curr_pm_time = data_aq["current"]["time"]
-    df.loc[df.index[-1], "pm25"] = curr_pm
-
-    om_cur = data_wx["current"]
-    om_weather = {
-        "temperature": float(om_cur["temperature_2m"]),
-        "humidity": float(om_cur["relative_humidity_2m"]),
-        "wind_speed": float(om_cur["wind_speed_10m"]),
-        "rainfall": float(om_cur["rain"]),
-        "time": om_cur["time"],
-        "source_name": "Open-Meteo current",
-        "verify_url": url_wx,
-        "api_url": url_wx,
-    }
+    pm_meta = fetch_weather_com_pm25()
+    df.loc[df.index[-1], "pm25"] = pm_meta["value"]
 
     used_weather = None
     weather_error = ""
-    if google_api_key.strip():
+    google_ok = False
+    key = (google_api_key or "").strip()
+    if key:
         try:
-            used_weather = fetch_google_weather(google_api_key.strip())
+            used_weather = fetch_google_weather(key)
+            google_ok = True
         except Exception as exc:
-            weather_error = f"Google Weather API failed ({exc}). Falling back."
+            weather_error = (
+                f"Google Weather API failed ({exc}). "
+                "weather.com Today ব্যবহার হচ্ছে — Google কার্ডের সাথে জোর করে মিলানো হয়নি।"
+            )
 
     if used_weather is None:
-        try:
-            used_weather = fetch_weather_channel()
-        except Exception as exc:
-            weather_error = (weather_error + " " if weather_error else "") + f"Weather.com failed ({exc}). Using Open-Meteo current."
-            used_weather = om_weather
+        used_weather = fetch_weather_channel()
 
     df.loc[df.index[-1], "temperature"] = used_weather["temperature"]
     df.loc[df.index[-1], "humidity"] = used_weather["humidity"]
@@ -355,19 +382,10 @@ def fetch_live_dhaka_data(google_api_key=""):
 
     meta = {
         "fetched_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-        "pm": {
-            "value": curr_pm,
-            "time": curr_pm_time,
-            "source_name": "Open-Meteo Air Quality — current hour (not forecast)",
-            "verify_url": (
-                "https://air-quality-api.open-meteo.com/v1/air-quality"
-                f"?latitude={DHAKA_LAT}&longitude={DHAKA_LON}&current=pm2_5&timezone=Asia%2FDhaka"
-            ),
-        },
+        "pm": pm_meta,
         "weather": used_weather,
-        "open_meteo_weather": om_weather,
+        "google_ok": google_ok,
         "weather_error": weather_error.strip(),
-        "history_url": url_aq,
     }
     return df, meta
 
@@ -386,11 +404,13 @@ def backtest_last_7_days(df, artifact):
     pred = artifact["ridge_model"].predict(Xs) + artifact["residual_tree_model"].predict(X)
     pred = np.maximum(5.0, pred)
     actual = np.array([np.nanmean(pm_vals[i + 1 : i + 25]) for i in range(start, end)], dtype=float)
+    persistence = np.array([np.nanmean(pm_vals[max(0, i - 23) : i + 1]) for i in range(start, end)], dtype=float)
     out = pd.DataFrame(
         {
             "datetime": df["datetime"].iloc[start:end].to_numpy(),
             "predicted_24h_mean": pred,
             "actual_24h_mean": actual,
+            "persistence": persistence,
         }
     )
     return out.dropna()
@@ -401,7 +421,7 @@ def metric_with_source(label, value, unit, source_name, when, verify_url):
     st.caption(f"{source_name}")
     if when:
         st.caption(f"Time: {when} (Dhaka)")
-    st.markdown(f'<a href="{verify_url}" target="_blank">[Open this source 🔗]</a>', unsafe_allow_html=True)
+    st.markdown(f'<a href="{verify_url}" target="_blank">[এই ওয়েবসাইট খুলুন 🔗]</a>', unsafe_allow_html=True)
 
 
 with st.sidebar:
@@ -419,19 +439,35 @@ with st.sidebar:
 5. Rainfall
 """
     )
-    st.markdown("### Live sources used by this app")
+    st.markdown("### স্যারকে যে দুটো সাইট দেখাবে")
     st.markdown(
-        """
-- **PM2.5:** [Open-Meteo current JSON](https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka)  
-- **Weather:** [weather.com Dhaka](https://weather.com/weather/today/l/23.81,90.41?unit=m) (The Weather Channel — the same provider behind Google Weather)
+        f"""
+- **PM2.5:** [weather.com Air Quality — Dhaka]({WEATHERCOM_AQ_PAGE})  
+  পেজে **PM2.5 µg/m³** লাইনটা। বড় সংখ্যাটা AQI, PM2.5 না।
+- **আবহাওয়া (৪টা):** [Google Weather — Dhaka]({GOOGLE_WEATHER_PAGE})  
+  Key দিলে অ্যাপ আর Google কার্ড একই নম্বর।
 """
     )
+    default_key = os.environ.get("GOOGLE_WEATHER_API_KEY", "") or _secret_google_key()
     google_key = st.text_input(
-        "Optional: Google Weather API key",
+        "Google Weather API key (৪টা আবহাওয়ার জন্য)",
+        value=default_key,
         type="password",
-        help="If you have a Google Cloud Weather API key, the app will fetch official Google current conditions so the Google Weather card can match exactly.",
+        help="Official Google Weather API. Maps Demo Key এ কার্ড লাগে না।",
     )
-    st.caption("Key না থাকলে Weather Channel API ব্যবহার হবে। Google সার্চ কার্ডের সাথে ১–২ ইউনিট ফারাক থাকতে পারে — সেটা ডিফল্ট ভ্যালু না।")
+    st.markdown(
+        f"""
+**কীভাবে কী নিবে (২–৩ মিনিট, কার্ড ছাড়া):**
+1. [Get a Maps Demo Key]({GOOGLE_DEMO_KEY_PAGE}) খোলো
+2. **Get a Demo Key** চাপো, Google অ্যাকাউন্টে লগইন
+3. যে key দিবে, এখানে পেস্ট করো
+4. পেজ রিফ্রেশ → আবার Fetch
+"""
+    )
+    if google_key.strip():
+        st.success("Google key আছে — আবহাওয়া Google Weather থেকে যাবে।")
+    else:
+        st.warning("Key নাই। আবহাওয়া এখন weather.com Today — Google কার্ড না।")
 
 
 tab1, tab2, tab3, tab4 = st.tabs(
@@ -447,15 +483,14 @@ tab1, tab2, tab3, tab4 = st.tabs(
 with tab1:
     st.markdown("### System 1 — Automatic live Dhaka fetch + 24-hour-ahead prediction")
     st.markdown(
-        """
+        f"""
 <div class="source-box">
-<b>ভেরিফাই রুল:</b> অ্যাপে যে নম্বর দেখাবে, পাশের লিংকটাও <i>সেই একই সোর্স</i>।
-অন্য ওয়েবসাইটের সাথে জোর করে মিলানো হয় না — তাই লিংক খুললে একই ভ্যালু পাবে।<br><br>
-<b>PM2.5 সোর্স:</b> Open-Meteo <i>current</i> hour
-&nbsp;·&nbsp; <a href="https://air-quality-api.open-meteo.com/v1/air-quality?latitude=23.8103&longitude=90.4125&current=pm2_5&timezone=Asia%2FDhaka" target="_blank">JSON খুলুন</a><br>
-<b>আবহাওয়া সোর্স:</b> The Weather Channel / weather.com
-&nbsp;·&nbsp; <a href="https://weather.com/weather/today/l/23.81,90.41?unit=m" target="_blank">weather.com Dhaka</a>
-&nbsp;·&nbsp; <a href="https://www.google.com/search?q=weather+in+dhaka&hl=en" target="_blank">Google Weather card</a> (তুলনা; ১–২ ইউনিট ফারাক নরমাল)
+<b>স্যারকে প্রুফ:</b> JSON না। পাশের লিংক আসল ওয়েবসাইট। অ্যাপ যে সাইট থেকে নম্বর নেয়, লিংকও সেই সাইট।<br><br>
+<b>PM2.5:</b> <a href="{WEATHERCOM_AQ_PAGE}" target="_blank">weather.com Air Quality — Dhaka</a>
+&nbsp;→ পেজের <b>PM2.5 … µg/m³</b> লাইন (বড় ৫২-টাইপ সংখ্যা AQI, PM না)<br>
+<b>তাপমাত্রা / আদ্রতা / বাতাস / বৃষ্টি:</b>
+<a href="{GOOGLE_WEATHER_PAGE}" target="_blank">Google Weather — weather in dhaka</a>
+&nbsp;(সাইডবারে Google key থাকলে)
 </div>
 """,
         unsafe_allow_html=True,
@@ -463,9 +498,8 @@ with tab1:
     st.markdown(
         """
 <div class="note-box">
-<b>আগের বাগ (এটাই ১২ আটকে থাকার কারণ):</b> অ্যাপ Open-Meteo-এর <i>শেষ ফোরকাস্ট আওয়ার</i> নিচ্ছিল
-(আজ রাত ২১–২৩টা ≈ ১২ µg/m³), <i>এখনকার ঘণ্টা</i> না। ডিফল্ট/হার্ডকোড ছিল না।
-এখন শুধু current hour কাটা হয়।
+<b>বৃষ্টি:</b> ডেটাসেট ও মডেল <i>মিলিমিটার</i> চায়। Google কার্ডে বড় করে যেটা দেখায় সেটা প্রায়ই <i>বৃষ্টির সম্ভাবনা %</i> — আলাদা জিনিস।
+অ্যাপে mm দেখাব; Google-এর % থাকলে পাশে লিখব।
 </div>
 """,
         unsafe_allow_html=True,
@@ -534,43 +568,34 @@ with tab1:
                             meta["weather"]["verify_url"],
                         )
                     with c5:
+                        rain_src = meta["weather"]["source_name"]
+                        rain_pct = meta["weather"].get("rain_chance_pct")
+                        if rain_pct is not None:
+                            rain_src = (
+                                f"{rain_src} — বৃষ্টি {curr_rain:.1f} mm "
+                                f"(কার্ডের {rain_pct:.0f}% হলো সম্ভাবনা, mm না)"
+                            )
+                        else:
+                            rain_src = f"{rain_src} — last 1h, millimetres"
                         metric_with_source(
                             "Rainfall (1h)",
                             f"{curr_rain:.1f}",
                             "mm",
-                            meta["weather"]["source_name"] + " — millimetres, not Google’s rain %",
+                            rain_src,
                             meta["weather"].get("time", ""),
                             meta["weather"]["verify_url"],
                         )
 
-                    omw = meta["open_meteo_weather"]
-                    with st.expander("Live readout from both weather APIs (proof these are not defaults)"):
-                        st.write(
-                            {
-                                "display_source": meta["weather"]["source_name"],
-                                "display": {
-                                    "temp_C": curr_temp,
-                                    "humidity_pct": curr_hum,
-                                    "wind_kmh": curr_wind,
-                                    "rain_mm": curr_rain,
-                                    "time": meta["weather"].get("time", ""),
-                                },
-                                "open_meteo_current_same_moment": {
-                                    "temp_C": omw["temperature"],
-                                    "humidity_pct": omw["humidity"],
-                                    "wind_kmh": omw["wind_speed"],
-                                    "rain_mm": omw["rainfall"],
-                                    "time": omw["time"],
-                                },
-                                "open_meteo_pm25_current": {
-                                    "pm25": curr_pm,
-                                    "time": meta["pm"]["time"],
-                                },
-                            }
-                        )
+                    if meta["pm"].get("aqi") is not None:
                         st.caption(
-                            "দুই API-এর নম্বর আলাদা হবে — তাই বোঝা যায় হার্ডকোড না। "
-                            "ডিসপ্লেতে যে সোর্স লেখা, ভেরিফাই লিংকও সেই সোর্স।"
+                            f"weather.com পেজের বড় সংখ্যা **AQI {meta['pm']['aqi']}** "
+                            f"({meta['pm'].get('category','')}). "
+                            f"অ্যাপে দেখানো **PM2.5 = {curr_pm:.1f} µg/m³** — পেজে PM2.5 লাইনে এই µg/m³ টা খুঁজো।"
+                        )
+                    if not meta.get("google_ok"):
+                        st.warning(
+                            "Google Weather key নাই / ফেল করেছে। ৪টা আবহাওয়া এখন weather.com Today থেকে। "
+                            f"Google কার্ড মিলাতে সাইডবারে Demo Key দাও: {GOOGLE_DEMO_KEY_PAGE}"
                         )
 
                     st.markdown("---")
@@ -606,15 +631,16 @@ with tab1:
                         ls="--",
                         lw=2.2,
                         marker="o",
-                        label=f"24h-ahead now ({pred_24h:.1f})",
+                        label=f"24h-ahead MEAN now ({pred_24h:.1f})",
                     )
                     axes[0].axhline(50, color="#2CA02C", ls=":", alpha=0.7, label="Good 50")
                     axes[0].axhline(100, color="#FFC107", ls=":", alpha=0.7, label="Moderate 100")
-                    axes[0].set_title("Last 7 days — observed PM2.5 (Open-Meteo hourly, Dhaka local time)")
+                    axes[0].set_title("Last 7 days — observed hourly PM2.5 (history feed, Dhaka time)")
                     axes[0].set_ylabel("PM2.5 (µg/m³)")
                     axes[0].grid(True, ls="--", alpha=0.45)
                     axes[0].legend(loc="upper left", fontsize=8)
 
+                    mae = mae_p = bias = None
                     if not bt.empty:
                         axes[1].plot(bt["datetime"], bt["actual_24h_mean"], color="#2CA02C", lw=2.0, label="Actual next-24h mean")
                         axes[1].plot(
@@ -623,10 +649,23 @@ with tab1:
                             color="#D85A30",
                             lw=2.0,
                             ls="--",
-                            label="Model 24h-ahead prediction",
+                            label="Thesis model 24h-ahead",
+                        )
+                        axes[1].plot(
+                            bt["datetime"],
+                            bt["persistence"],
+                            color="#7B8A9A",
+                            lw=1.4,
+                            ls=":",
+                            label="Naive: last-24h mean",
                         )
                         mae = float(np.mean(np.abs(bt["predicted_24h_mean"] - bt["actual_24h_mean"])))
-                        axes[1].set_title(f"Last 7 days — 24h-ahead prediction vs actual next-24h mean   (MAE {mae:.1f} µg/m³)")
+                        mae_p = float(np.mean(np.abs(bt["persistence"] - bt["actual_24h_mean"])))
+                        bias = float(np.mean(bt["predicted_24h_mean"] - bt["actual_24h_mean"]))
+                        axes[1].set_title(
+                            "Last 7 days — 24h-ahead MEAN vs actual next-24h MEAN   "
+                            f"(model MAE {mae:.1f}, naive MAE {mae_p:.1f}, bias {bias:+.1f})"
+                        )
                         axes[1].set_ylabel("PM2.5 (µg/m³)")
                         axes[1].grid(True, ls="--", alpha=0.45)
                         axes[1].legend(loc="upper left", fontsize=8)
@@ -662,9 +701,17 @@ with tab1:
                             use_container_width=True,
                             hide_index=True,
                         )
-                        st.caption(
-                            "এই টেবিল/চার্ট Open-Meteo-এর গত ৭ দিনের hourly সিরিজ দিয়ে মডেলকে পেছন থেকে চালিয়ে বানানো। "
-                            "কোনো হাতে-লেখা সাকসেস স্কোর নাই।"
+                        st.markdown(
+                            f"""
+<div class="note-box">
+<b>৭ দিনে ডিফারেন্স কেন (ফেক না, মডেল-ডোমেইন):</b><br>
+• টার্গেট = <i>পরের ২৪ ঘন্টার গড়</i> PM2.5 — কালকের একটা hourly নম্বর না। কমলা বিন্দু এখনকার hourly ১১-এর সাথে সেইম হবে না।<br>
+• ট্রেনিং ২০১৬–২০২২ গ্রাউন্ড স্টেশন, গড় ~৮৮ µg/m³ (আগস্ট ~৩৬)। এখনকার বর্ষা হিস্টোরি গড় ~১৭। মডেল পুরনো আগস্ট লেভেলের দিকে টানে — bias ≈ <b>{bias:+.1f}</b> µg/m³।<br>
+• এই ৭ দিনে naive last-24h mean MAE {mae_p:.1f}, মডেল MAE {mae:.1f}। থিসিস টেস্ট R² ০.৮৬ অন্য ডিস্ট্রিবিউশনে (২০২১–২২), এই বর্ষা ক্যাম্পেইন না।<br>
+• চার্টটা হিস্টোরি সিরিজ দিয়ে মডেল রিপ্লে — হাতে-লেখা সাকসেস স্কোর নাই।
+</div>
+""",
+                            unsafe_allow_html=True,
                         )
 
                 except Exception as exc:
