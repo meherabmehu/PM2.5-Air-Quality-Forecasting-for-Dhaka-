@@ -550,9 +550,10 @@ def render_live_panel(google_key, nonce):
                 hide_index=True,
             )
             st.caption(
-                f"Target is the next-24h mean, not the next hourly reading. "
-                f"Training mean ~88 µg/m³ (August ~36); current monsoon history ~17, so the model is biased high "
-                f"(bias {bias:+.1f}). Thesis test R² is 0.86 on 2021–22, not this monsoon window."
+                f"Why abs. error: the target is the next-24h mean, and this monsoon series (~17 µg/m³) "
+                f"is far below the 2016–22 training mean (~88; August ~36), so the model sits high "
+                f"(bias {bias:+.1f} µg/m³). Not a hardcoded table. "
+                f"The window is the last 7 completed days and slides forward as new hours arrive."
             )
     except Exception as exc:
         st.error(f"Live fetch / forecast failed: {exc}")
