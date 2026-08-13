@@ -357,16 +357,12 @@ def fetch_live_dhaka_data(google_api_key=""):
         try:
             used_weather = fetch_google_weather(key)
             google_ok = True
+            df.loc[df.index[-1], "temperature"] = used_weather["temperature"]
+            df.loc[df.index[-1], "humidity"] = used_weather["humidity"]
+            df.loc[df.index[-1], "wind_speed"] = used_weather["wind_speed"]
+            df.loc[df.index[-1], "rainfall"] = used_weather["rainfall"]
         except Exception as exc:
-            weather_error = f"Google Weather API failed ({exc}). Using weather.com Today instead."
-
-    if used_weather is None:
-        used_weather = fetch_weather_channel()
-
-    df.loc[df.index[-1], "temperature"] = used_weather["temperature"]
-    df.loc[df.index[-1], "humidity"] = used_weather["humidity"]
-    df.loc[df.index[-1], "wind_speed"] = used_weather["wind_speed"]
-    df.loc[df.index[-1], "rainfall"] = used_weather["rainfall"]
+            weather_error = f"Google Weather API failed ({exc})."
 
     return df, {
         "fetched_at": now.strftime("%Y-%m-%d %H:%M:%S"),
